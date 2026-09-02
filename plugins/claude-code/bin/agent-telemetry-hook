@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+# Claude Code plugin wrapper: run the shared telemetry hook for this agent.
+# The bundled agent_telemetry package sits at the plugin root, so we add that
+# root to PYTHONPATH. CLAUDE_PLUGIN_ROOT is set by Claude Code; when the hook is
+# run directly (tests) we fall back to this script's own location.
+# Always exits 0 so telemetry can never interrupt a Claude Code session.
+
+plugin_root="${CLAUDE_PLUGIN_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}"
+
+PYTHONPATH="$plugin_root${PYTHONPATH:+:$PYTHONPATH}" \
+  python3 -m agent_telemetry.hook claude-code
+
+exit 0
