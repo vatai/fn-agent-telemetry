@@ -6,16 +6,12 @@ transcript snapshots stay together:
     <AGENT_TELEMETRY_DIR>/agent-telemetry.jsonl
     <AGENT_TELEMETRY_DIR>/transcripts/<session_id>.jsonl
 
-`AGENT_TELEMETRY_LOG` and `AGENT_TELEMETRY_TRANSCRIPT_DIR` override either
-artifact individually. Both derive from the telemetry directory rather than from
-each other, so overriding one leaves the other where it was.
+`AGENT_TELEMETRY_DIR` is the only knob; everything else is derived from it.
 """
 
 import os
 
 TELEMETRY_DIR_ENV = "AGENT_TELEMETRY_DIR"
-LOG_PATH_ENV = "AGENT_TELEMETRY_LOG"
-TRANSCRIPT_DIR_ENV = "AGENT_TELEMETRY_TRANSCRIPT_DIR"
 
 DEFAULT_DIR_NAME = "agent-telemetry"
 LOG_NAME = "agent-telemetry.jsonl"
@@ -34,11 +30,11 @@ def _default_telemetry_dir():
 
 
 def log_path():
-    return os.environ.get(LOG_PATH_ENV) or _under_telemetry_dir(LOG_NAME)
+    return _under_telemetry_dir(LOG_NAME)
 
 
 def transcript_dir():
-    return os.environ.get(TRANSCRIPT_DIR_ENV) or _under_telemetry_dir(TRANSCRIPT_DIR_NAME)
+    return _under_telemetry_dir(TRANSCRIPT_DIR_NAME)
 
 
 def _under_telemetry_dir(name):

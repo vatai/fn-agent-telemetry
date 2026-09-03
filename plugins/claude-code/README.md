@@ -6,22 +6,14 @@ interrupts a session.
 
 ## Layout
 
-Both artifacts live in one telemetry directory, `~/agent-telemetry` by default:
+Everything goes in one directory, `~/agent-telemetry` unless
+`AGENT_TELEMETRY_DIR` says otherwise. It is the only setting.
 
 ```
 ~/agent-telemetry/
 ├── agent-telemetry.jsonl              # one JSON object per hook event
 └── transcripts/<session_id>.jsonl     # copy of the session transcript
 ```
-
-| Variable                          | Overrides                       |
-| --------------------------------- | ------------------------------- |
-| `AGENT_TELEMETRY_DIR`             | the telemetry directory itself  |
-| `AGENT_TELEMETRY_LOG`             | the event log path alone        |
-| `AGENT_TELEMETRY_TRANSCRIPT_DIR`  | the snapshot directory alone    |
-
-The last two derive from `AGENT_TELEMETRY_DIR` rather than from each other, so
-overriding one leaves the other in place.
 
 ## Distribute & install
 
