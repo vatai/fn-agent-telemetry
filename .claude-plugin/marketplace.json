@@ -4,7 +4,7 @@
   "description": "Local telemetry integrations for Codex and Claude Code CLI sessions.",
   "plugins": [
     {
-      "name": "agent-telemetry",
+      "name": "fn-claude-telemetry",
       "source": "./plugins/claude-code",
       "description": "Append-only telemetry capture for local Claude Code CLI sessions."
     }
