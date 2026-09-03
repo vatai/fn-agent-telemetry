@@ -1,7 +1,8 @@
 # fn-claude-telemetry (Claude Code plugin)
 
 Appends JSONL telemetry for every local Claude Code CLI session to the path in
-`AGENT_TELEMETRY_LOG`. Telemetry is best-effort and never interrupts a session.
+`AGENT_TELEMETRY_LOG`, defaulting to `~/agent-telemetry.jsonl`. Telemetry is
+best-effort and never interrupts a session.
 
 ## Distribute & install
 
@@ -9,7 +10,7 @@ The plugin is served from the marketplace manifest at the repo root
 (`.claude-plugin/marketplace.json`). To use it:
 
 ```sh
-export AGENT_TELEMETRY_LOG=~/agent-telemetry.jsonl   # add to your shell profile
+export AGENT_TELEMETRY_LOG=~/somewhere-else.jsonl    # optional; add to your shell profile
 claude plugin marketplace add /path/to/clanker       # or a git URL / GitHub repo
 claude plugin install fn-claude-telemetry@clanker-telemetry
 ```
@@ -17,11 +18,12 @@ claude plugin install fn-claude-telemetry@clanker-telemetry
 Requires `python3` on `PATH`. Verify with `claude plugin details fn-claude-telemetry`
 (9 hooks) and remove with `claude plugin uninstall fn-claude-telemetry@clanker-telemetry`.
 
-If `AGENT_TELEMETRY_LOG` is unset, hooks run and no-op silently.
+If `AGENT_TELEMETRY_LOG` is unset, telemetry goes to `~/agent-telemetry.jsonl`.
+Hooks no-op silently only when no home directory can be resolved.
 
 ## Generated log file
 
-`AGENT_TELEMETRY_LOG` is an append-only JSONL file: one JSON object per line,
+The log is an append-only JSONL file: one JSON object per line,
 one line per hook event, retained indefinitely. Each object has:
 
 | Field             | Description                                                             |

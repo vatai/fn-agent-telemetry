@@ -8,10 +8,18 @@ import json
 import os
 
 LOG_PATH_ENV = "AGENT_TELEMETRY_LOG"
+DEFAULT_LOG_NAME = "agent-telemetry.jsonl"
 
 
 def log_path():
-    return os.environ.get(LOG_PATH_ENV)
+    return os.environ.get(LOG_PATH_ENV) or _default_log_path()
+
+
+def _default_log_path():
+    home = os.path.expanduser("~")
+    # expanduser returns "~" unchanged when there is no home to resolve, which
+    # would put the log in a literal "~" directory under the session cwd.
+    return os.path.join(home, DEFAULT_LOG_NAME) if os.path.isabs(home) else None
 
 
 def append_event(event):
