@@ -13,18 +13,7 @@ import shutil
 import sys
 import tempfile
 
-from . import writer
-
-TRANSCRIPT_DIR_ENV = "AGENT_TELEMETRY_TRANSCRIPT_DIR"
-DEFAULT_DIR_NAME = "agent-telemetry-transcripts"
-
-
-def transcript_dir():
-    configured = os.environ.get(TRANSCRIPT_DIR_ENV)
-    if configured:
-        return configured
-    log = writer.log_path()
-    return os.path.join(os.path.dirname(log), DEFAULT_DIR_NAME) if log else None
+from . import paths
 
 
 def snapshot(transcript_path, session_id=None):
@@ -47,7 +36,7 @@ def _copy(transcript_path, session_id):
 
 
 def _destination(transcript_path, session_id):
-    directory = transcript_dir()
+    directory = paths.transcript_dir()
     if not directory:
         return None
     name = session_id or _stem(transcript_path)
@@ -89,7 +78,7 @@ def resolve_transcript(cwd):
 
 
 def _recorded_transcripts(cwd):
-    log = writer.log_path()
+    log = paths.log_path()
     if not log or not os.path.isfile(log):
         return set()
     with open(log, encoding="utf-8") as handle:

@@ -7,24 +7,12 @@ session, so all errors are swallowed here rather than propagated to the caller.
 import json
 import os
 
-LOG_PATH_ENV = "AGENT_TELEMETRY_LOG"
-DEFAULT_LOG_NAME = "agent-telemetry.jsonl"
-
-
-def log_path():
-    return os.environ.get(LOG_PATH_ENV) or _default_log_path()
-
-
-def _default_log_path():
-    home = os.path.expanduser("~")
-    # expanduser returns "~" unchanged when there is no home to resolve, which
-    # would put the log in a literal "~" directory under the session cwd.
-    return os.path.join(home, DEFAULT_LOG_NAME) if os.path.isabs(home) else None
+from . import paths
 
 
 def append_event(event):
     """Append one event as a JSON line. Returns True on success, else False."""
-    path = log_path()
+    path = paths.log_path()
     if not path:
         return False
     try:

@@ -1,8 +1,27 @@
 # fn-claude-telemetry (Claude Code plugin)
 
-Appends JSONL telemetry for every local Claude Code CLI session to the path in
-`AGENT_TELEMETRY_LOG`, defaulting to `~/agent-telemetry.jsonl`. Telemetry is
-best-effort and never interrupts a session.
+Appends JSONL telemetry for every local Claude Code CLI session, and snapshots
+the session transcript alongside it. Telemetry is best-effort and never
+interrupts a session.
+
+## Layout
+
+Both artifacts live in one telemetry directory, `~/agent-telemetry` by default:
+
+```
+~/agent-telemetry/
+├── agent-telemetry.jsonl              # one JSON object per hook event
+└── transcripts/<session_id>.jsonl     # copy of the session transcript
+```
+
+| Variable                          | Overrides                       |
+| --------------------------------- | ------------------------------- |
+| `AGENT_TELEMETRY_DIR`             | the telemetry directory itself  |
+| `AGENT_TELEMETRY_LOG`             | the event log path alone        |
+| `AGENT_TELEMETRY_TRANSCRIPT_DIR`  | the snapshot directory alone    |
+
+The last two derive from `AGENT_TELEMETRY_DIR` rather than from each other, so
+overriding one leaves the other in place.
 
 ## Distribute & install
 
@@ -10,7 +29,7 @@ The plugin is served from the marketplace manifest at the repo root
 (`.claude-plugin/marketplace.json`). To use it:
 
 ```sh
-export AGENT_TELEMETRY_LOG=~/somewhere-else.jsonl    # optional; add to your shell profile
+export AGENT_TELEMETRY_DIR=~/somewhere-else          # optional; add to your shell profile
 claude plugin marketplace add /path/to/clanker       # or a git URL / GitHub repo
 claude plugin install fn-claude-telemetry@clanker-telemetry
 ```
@@ -18,15 +37,13 @@ claude plugin install fn-claude-telemetry@clanker-telemetry
 Requires `python3` on `PATH`. Verify with `claude plugin details fn-claude-telemetry`
 (9 hooks) and remove with `claude plugin uninstall fn-claude-telemetry@clanker-telemetry`.
 
-If `AGENT_TELEMETRY_LOG` is unset, telemetry goes to `~/agent-telemetry.jsonl`.
 Hooks no-op silently only when no home directory can be resolved.
 
 ## Transcript snapshots
 
 Token usage, cost and assistant output never reach a hook payload; they live in
 the session transcript. On every `Stop` and `SessionEnd` the plugin copies that
-transcript to `<log dir>/agent-telemetry-transcripts/<session_id>.jsonl`,
-overridable with `AGENT_TELEMETRY_TRANSCRIPT_DIR`. The copy is staged and
+transcript into `transcripts/`. The copy is staged and
 renamed into place, so an interrupted snapshot never truncates the previous one,
 and each copy fully replaces the last — the transcript is append-only.
 
