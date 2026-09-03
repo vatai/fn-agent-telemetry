@@ -1,10 +1,14 @@
 """Filesystem layout for telemetry artifacts.
 
-Everything lives under one telemetry directory, keyed by session so that no two
-sessions ever share a file:
+One archive per session is the output, holding both of that session's files:
 
-    <AGENT_TELEMETRY_DIR>/events/<session_id>.jsonl
-    <AGENT_TELEMETRY_DIR>/transcripts/<session_id>.jsonl
+    <AGENT_TELEMETRY_DIR>/<session_id>.zip
+        events.jsonl        one JSON object per hook event
+        transcript.jsonl    copy of the Claude Code session transcript
+
+Hook events arrive one process at a time and a zip cannot be appended to, so the
+event log accumulates in a working file under `.pending/` and is folded into the
+archive at every snapshot.
 
 `AGENT_TELEMETRY_DIR` is the only knob; everything else is derived from it.
 """
@@ -15,8 +19,10 @@ import re
 TELEMETRY_DIR_ENV = "AGENT_TELEMETRY_DIR"
 
 DEFAULT_DIR_NAME = "agent-telemetry"
-EVENTS_DIR_NAME = "events"
-TRANSCRIPTS_DIR_NAME = "transcripts"
+PENDING_DIR_NAME = ".pending"
+ARCHIVE_SUFFIX = ".zip"
+EVENTS_MEMBER = "events.jsonl"
+TRANSCRIPT_MEMBER = "transcript.jsonl"
 UNKNOWN_SESSION = "unknown-session"
 
 _UNSAFE_IN_NAME = re.compile(r"[^A-Za-z0-9._-]")
@@ -33,29 +39,22 @@ def _default_telemetry_dir():
     return os.path.join(home, DEFAULT_DIR_NAME) if os.path.isabs(home) else None
 
 
-def events_dir():
-    return _under_telemetry_dir(EVENTS_DIR_NAME)
-
-
-def transcripts_dir():
-    return _under_telemetry_dir(TRANSCRIPTS_DIR_NAME)
+def pending_dir():
+    directory = telemetry_dir()
+    return os.path.join(directory, PENDING_DIR_NAME) if directory else None
 
 
 def log_path(session_id):
-    return _session_file(events_dir(), session_id)
+    """Working event log for a session, folded into the archive at each snapshot."""
+    return _session_file(pending_dir(), session_id, ".jsonl")
 
 
-def transcript_path(session_id):
-    return _session_file(transcripts_dir(), session_id)
+def archive_path(session_id):
+    return _session_file(telemetry_dir(), session_id, ARCHIVE_SUFFIX)
 
 
-def _under_telemetry_dir(name):
-    directory = telemetry_dir()
-    return os.path.join(directory, name) if directory else None
-
-
-def _session_file(directory, session_id):
-    return os.path.join(directory, _session_name(session_id) + ".jsonl") if directory else None
+def _session_file(directory, session_id, suffix):
+    return os.path.join(directory, _session_name(session_id) + suffix) if directory else None
 
 
 def _session_name(session_id):

@@ -1,58 +1,71 @@
-"""Session transcript snapshots.
+"""Per-session telemetry archives.
 
-The Claude Code transcript at ``transcript_path`` carries assistant output,
-token usage and cost, none of which appear in any hook payload. Snapshots copy
-it next to the telemetry log so the data outlives Claude Code's own retention of
-``~/.claude/projects``. Like every write in this package, a snapshot is
-best-effort and never interrupts a session.
+A snapshot packs one session's hook events and its Claude Code transcript into
+`<AGENT_TELEMETRY_DIR>/<session_id>.zip`. The transcript is where assistant
+output, token usage and cost live -- none of them reach a hook payload -- and
+archiving it also outlives Claude Code's own retention of ``~/.claude/projects``.
+Like every write in this package, a snapshot is best-effort and never interrupts
+a session.
 """
 
 import json
 import os
-import shutil
 import sys
 import tempfile
+import zipfile
 
 from . import paths
 
 
 def snapshot(transcript_path, session_id=None):
-    """Copy one transcript into the snapshot directory. Returns the destination."""
+    """Archive one session. Returns the archive path, or None if nothing was written."""
     try:
-        return _copy(transcript_path, session_id)
+        return _archive(transcript_path, session_id)
     except Exception:
         return None
 
 
-def _copy(transcript_path, session_id):
-    if not transcript_path or not os.path.isfile(transcript_path):
-        return None
-    destination = _destination(transcript_path, session_id)
-    if not destination:
+def _archive(transcript_path, session_id):
+    session = session_id or _stem(transcript_path)
+    destination = paths.archive_path(session)
+    members = _members(session, transcript_path)
+    if not destination or not members:
         return None
     os.makedirs(os.path.dirname(destination), exist_ok=True)
-    _replace_atomically(transcript_path, destination)
+    _write_archive(destination, members)
     return destination
 
 
-def _destination(transcript_path, session_id):
-    return paths.transcript_path(session_id or _stem(transcript_path))
+def _members(session, transcript_path):
+    """Map archive member name to source file, skipping whatever does not exist."""
+    sources = {
+        paths.EVENTS_MEMBER: paths.log_path(session),
+        paths.TRANSCRIPT_MEMBER: transcript_path,
+    }
+    return {name: path for name, path in sources.items() if path and os.path.isfile(path)}
 
 
-def _stem(path):
-    return os.path.splitext(os.path.basename(path))[0]
-
-
-def _replace_atomically(source, destination):
-    """Stage beside the destination so a failed copy never truncates a snapshot."""
-    handle, staged = tempfile.mkstemp(dir=os.path.dirname(destination), suffix=".part")
-    os.close(handle)
+def _write_archive(destination, members):
+    """Stage beside the destination so a failed write never truncates an archive."""
+    staged = _stage(destination)
     try:
-        shutil.copyfile(source, staged)
+        with zipfile.ZipFile(staged, "w", zipfile.ZIP_DEFLATED) as archive:
+            for name, source in sorted(members.items()):
+                archive.write(source, name)
         os.replace(staged, destination)
     except Exception:
         _remove(staged)
         raise
+
+
+def _stage(destination):
+    handle, staged = tempfile.mkstemp(dir=os.path.dirname(destination), suffix=".part")
+    os.close(handle)
+    return staged
+
+
+def _stem(path):
+    return os.path.splitext(os.path.basename(path))[0] if path else None
 
 
 def _remove(path):
@@ -82,7 +95,7 @@ def _recorded_transcripts(cwd):
 
 
 def _event_logs():
-    directory = paths.events_dir()
+    directory = paths.pending_dir()
     if not directory or not os.path.isdir(directory):
         return []
     names = sorted(n for n in os.listdir(directory) if n.endswith(".jsonl"))
@@ -111,8 +124,8 @@ def main(argv=None):
     if not transcript:
         print(f"no transcript recorded for {cwd}")
         return 0
-    destination = snapshot(transcript)
-    print(f"snapshot -> {destination}" if destination else f"snapshot failed: {transcript}")
+    archive = snapshot(transcript)
+    print(f"snapshot -> {archive}" if archive else f"snapshot failed: {transcript}")
     return 0
 
 

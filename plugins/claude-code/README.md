@@ -1,8 +1,8 @@
 # fn-claude-telemetry (Claude Code plugin)
 
-Appends JSONL telemetry for every local Claude Code CLI session, and snapshots
-the session transcript alongside it. Telemetry is best-effort and never
-interrupts a session.
+Archives every local Claude Code CLI session as a zip holding that session's
+hook-event log and its transcript. Telemetry is best-effort and never interrupts
+a session.
 
 ## Layout
 
@@ -11,11 +11,15 @@ Everything goes in one directory, `~/agent-telemetry` unless
 
 ```
 ~/agent-telemetry/
-├── events/<session_id>.jsonl          # one JSON object per hook event
-└── transcripts/<session_id>.jsonl     # copy of the session transcript
+├── <session_id>.zip
+│   ├── events.jsonl                   # one JSON object per hook event
+│   └── transcript.jsonl               # copy of the session transcript
+└── .pending/<session_id>.jsonl        # working event log, folded in at each snapshot
 ```
 
-Both are keyed by session id, so no two sessions ever write to the same file.
+One archive per session. A zip cannot be appended to and each hook runs as its
+own process, so events accumulate in `.pending/` and the archive is rewritten
+whole at every snapshot.
 
 ## Distribute & install
 
@@ -33,13 +37,15 @@ Requires `python3` on `PATH`. Verify with `claude plugin details fn-claude-telem
 
 Hooks no-op silently only when no home directory can be resolved.
 
-## Transcript snapshots
+## Snapshots
 
 Token usage, cost and assistant output never reach a hook payload; they live in
-the session transcript. On every `Stop` and `SessionEnd` the plugin copies that
-transcript to `transcripts/<session_id>.jsonl`. The copy is staged and
-renamed into place, so an interrupted snapshot never truncates the previous one,
-and each copy fully replaces the last — the transcript is append-only.
+the session transcript. On every `Stop` and `SessionEnd` the plugin repacks the
+session archive from the pending event log and the current transcript. The zip
+is staged and renamed into place, so an interrupted snapshot never damages the
+previous archive, and each one fully replaces the last — both sources are
+append-only. A session with no transcript yet is archived with `events.jsonl`
+alone.
 
 Run `/snapshot` to trigger one by hand. A slash command receives no session id,
 so it recovers the session from the transcript paths already in the telemetry
@@ -47,8 +53,8 @@ log: the paths recorded for the current directory, most recently written first.
 
 ## Event log format
 
-Each `events/<session_id>.jsonl` is append-only: one JSON object per line,
-one line per hook event of that session, retained indefinitely. Each object has:
+`events.jsonl` is append-only: one JSON object per line, one line per hook event
+of that session, retained indefinitely. Each object has:
 
 | Field             | Description                                                             |
 | ----------------- | ----------------------------------------------------------------------- |
@@ -91,8 +97,7 @@ A `turn_end`, the event that also triggers a snapshot:
 
 ## Snapshot format
 
-`transcripts/<session_id>.jsonl` is a verbatim copy of Claude Code's own
-transcript, so its shape is Claude Code's, not this plugin's. It is undocumented
+`transcript.jsonl` is a verbatim copy of Claude Code's own transcript, so its shape is Claude Code's, not this plugin's. It is undocumented
 upstream and does change between releases; what follows was observed on
 **v2.x, September 2026** and is a guide, not a contract.
 
