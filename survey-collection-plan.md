@@ -1,10 +1,10 @@
 # Goal
 
-Collect detailed local usage information from Codex and Claude Code through their native integrations.
+Collect detailed local usage information from Codex, Claude Code, and opencode through their native integrations.
 
 # Specification
 
-- Observe local Codex and Claude Code CLI sessions, including interactive and non-interactive terminal sessions.
+- Observe local Codex, Claude Code, and opencode CLI sessions, including interactive and non-interactive terminal sessions.
 - Install integrations in per-user agent configuration.
 - Capture session lifecycle, prompts, tool activity, tool inputs and outputs, assistant output, errors, and raw native event payloads.
 - Append plaintext JSONL telemetry indefinitely to the path configured by `AGENT_TELEMETRY_LOG`.
