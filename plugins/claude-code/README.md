@@ -21,6 +21,19 @@ Requires `python3` on `PATH`. Verify with `claude plugin details fn-claude-telem
 If `AGENT_TELEMETRY_LOG` is unset, telemetry goes to `~/agent-telemetry.jsonl`.
 Hooks no-op silently only when no home directory can be resolved.
 
+## Transcript snapshots
+
+Token usage, cost and assistant output never reach a hook payload; they live in
+the session transcript. On every `Stop` and `SessionEnd` the plugin copies that
+transcript to `<log dir>/agent-telemetry-transcripts/<session_id>.jsonl`,
+overridable with `AGENT_TELEMETRY_TRANSCRIPT_DIR`. The copy is staged and
+renamed into place, so an interrupted snapshot never truncates the previous one,
+and each copy fully replaces the last — the transcript is append-only.
+
+Run `/snapshot` to trigger one by hand. A slash command receives no session id,
+so it recovers the session from the transcript paths already in the telemetry
+log: the paths recorded for the current directory, most recently written first.
+
 ## Generated log file
 
 The log is an append-only JSONL file: one JSON object per line,

@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+# Claude Code plugin wrapper: snapshot the calling session's transcript.
+# Backs the /snapshot command, which -- unlike the hooks -- gets no payload, so
+# the session is resolved from the transcript paths already in the telemetry log.
+# Prints one status line, which the command inlines into the conversation.
+
+plugin_root="${CLAUDE_PLUGIN_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}"
+
+PYTHONPATH="$plugin_root${PYTHONPATH:+:$PYTHONPATH}" \
+  python3 -m agent_telemetry.snapshot "$(pwd)"
+
+exit 0

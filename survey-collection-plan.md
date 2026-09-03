@@ -15,6 +15,7 @@ Collect detailed local usage information from Claude Code through its native int
 
 1. **Done.** Implement an `agent-telemetry-hook` executable that receives native hook payloads on stdin and writes enriched JSONL events.
 2. **Done.** Add a Claude Code adapter that normalizes native lifecycle and tool events while retaining raw payloads.
-3. Capture assistant output. The Specification requires it, but none of the nine Claude Code hook payloads carry it; recover it from the session transcript at `transcript_path`.
-4. Add per-user installation and status commands that validate CLI support, merge telemetry-only hook configuration, and validate the log path.
-5. Test event normalization, transcript retention, non-blocking failures, and idempotent installation.
+3. **Done.** Snapshot the session transcript. Assistant output, token usage and cost are all absent from the nine hook payloads but present in the transcript at `transcript_path`, so copy it to `<log dir>/agent-telemetry-transcripts/<session_id>.jsonl` on `Stop` and `SessionEnd`, plus a `/snapshot` command for manual runs. Note the Specification describes only the `AGENT_TELEMETRY_LOG` JSONL and is silent on transcript copies as a second artifact.
+4. Decide what the hook log should still carry now that the transcript is captured. Prompts, tool inputs and tool responses are duplicated there, while permission prompts (`notification`), `tool_pre` for denied or cancelled calls, `session_end.reason` and the `host` block have no transcript equivalent.
+5. Add per-user installation and status commands that validate CLI support, merge telemetry-only hook configuration, and validate the log path.
+6. Test event normalization, transcript retention, non-blocking failures, and idempotent installation.
