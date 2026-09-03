@@ -1,7 +1,9 @@
 """Append-only JSONL telemetry writer.
 
-Every write is best-effort: a telemetry failure must never interrupt an agent
-session, so all errors are swallowed here rather than propagated to the caller.
+Each session appends to its own file, so sessions never interleave and a file is
+only ever written by the one session that owns it. Every write is best-effort: a
+telemetry failure must never interrupt an agent session, so all errors are
+swallowed here rather than propagated to the caller.
 """
 
 import json
@@ -12,7 +14,7 @@ from . import paths
 
 def append_event(event):
     """Append one event as a JSON line. Returns True on success, else False."""
-    path = paths.log_path()
+    path = paths.log_path(event.get("session_id"))
     if not path:
         return False
     try:

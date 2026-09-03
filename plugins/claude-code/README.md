@@ -11,9 +11,11 @@ Everything goes in one directory, `~/agent-telemetry` unless
 
 ```
 ~/agent-telemetry/
-├── agent-telemetry.jsonl              # one JSON object per hook event
+├── events/<session_id>.jsonl          # one JSON object per hook event
 └── transcripts/<session_id>.jsonl     # copy of the session transcript
 ```
+
+Both are keyed by session id, so no two sessions ever write to the same file.
 
 ## Distribute & install
 
@@ -35,7 +37,7 @@ Hooks no-op silently only when no home directory can be resolved.
 
 Token usage, cost and assistant output never reach a hook payload; they live in
 the session transcript. On every `Stop` and `SessionEnd` the plugin copies that
-transcript into `transcripts/`. The copy is staged and
+transcript to `transcripts/<session_id>.jsonl`. The copy is staged and
 renamed into place, so an interrupted snapshot never truncates the previous one,
 and each copy fully replaces the last — the transcript is append-only.
 
@@ -45,8 +47,8 @@ log: the paths recorded for the current directory, most recently written first.
 
 ## Generated log file
 
-The log is an append-only JSONL file: one JSON object per line,
-one line per hook event, retained indefinitely. Each object has:
+Each `events/<session_id>.jsonl` is append-only: one JSON object per line,
+one line per hook event of that session, retained indefinitely. Each object has:
 
 | Field             | Description                                                             |
 | ----------------- | ----------------------------------------------------------------------- |

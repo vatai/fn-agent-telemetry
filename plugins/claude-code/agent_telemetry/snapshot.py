@@ -36,11 +36,7 @@ def _copy(transcript_path, session_id):
 
 
 def _destination(transcript_path, session_id):
-    directory = paths.transcript_dir()
-    if not directory:
-        return None
-    name = session_id or _stem(transcript_path)
-    return os.path.join(directory, name + ".jsonl")
+    return paths.transcript_path(session_id or _stem(transcript_path))
 
 
 def _stem(path):
@@ -78,11 +74,19 @@ def resolve_transcript(cwd):
 
 
 def _recorded_transcripts(cwd):
-    log = paths.log_path()
-    if not log or not os.path.isfile(log):
-        return set()
-    with open(log, encoding="utf-8") as handle:
-        return {p for p in _transcript_paths(handle, cwd) if p}
+    recorded = set()
+    for log in _event_logs():
+        with open(log, encoding="utf-8") as handle:
+            recorded.update(p for p in _transcript_paths(handle, cwd) if p)
+    return recorded
+
+
+def _event_logs():
+    directory = paths.events_dir()
+    if not directory or not os.path.isdir(directory):
+        return []
+    names = sorted(n for n in os.listdir(directory) if n.endswith(".jsonl"))
+    return [os.path.join(directory, n) for n in names]
 
 
 def _transcript_paths(lines, cwd):
