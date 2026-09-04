@@ -27,18 +27,26 @@ this once before you leave it:
 /fn-eval
 ```
 
-Claude proposes what the session should be judged on, then asks two questions —
-a figure of merit, and a score from 1 to 5 where 5 is best — and packs the
-archive.
+Claude proposes what the session should be judged on, then asks two questions,
+one at a time — a figure of merit, then a value — and packs the archive.
 
-| Figure of merit  | Rates                                            |
-| ---------------- | ------------------------------------------------ |
-| `correctness`    | did the work come out right                      |
-| `time_saved`     | faster than doing it by hand                     |
-| `few_iterations` | how close to right on the first try              |
-| `code_quality`   | readability and fit with the surrounding code    |
-| `autonomy`       | how little steering it needed                    |
-| `trust`          | confidence in the result without re-checking it  |
+| Figure of merit | Rates                                          | You answer |
+| --------------- | ---------------------------------------------- | ---------- |
+| `satisfaction`  | how good the session was overall                | 1–5        |
+| `correctness`   | did the work come out right                     | 1–5        |
+| `code_quality`  | readability and fit with the surrounding code   | 1–5        |
+| `autonomy`      | how little steering it needed                   | 1–5        |
+| `trust`         | confidence in the result without re-checking it | 1–5        |
+| `speedup`       | measured walltime vs the previous version       | a ratio, × |
+| `time_saved`    | minutes saved vs doing it by hand               | minutes    |
+| `iterations`    | corrections needed before it was right          | a count    |
+
+The second question is worded from the answer to the first, which is why they
+are asked separately: a rating offers 1–5, a measurement asks for the number you
+observed. The scale — bounds, unit, and whether higher or lower is better — is
+written onto the event, so ratings and measurements stay readable side by side
+without this table. Values are validated against it, so an out-of-range rating
+is an error rather than a stored number.
 
 **Skip `/fn-eval` and you get no archive.** Nothing else triggers one — not a
 hook, not session end. The events survive in `.pending/`, but the transcript,
