@@ -28,8 +28,13 @@ def snapshot(transcript_path, session_id=None):
         return None
 
 
+def session_id_for(transcript_path):
+    """Claude Code names each transcript `<session_id>.jsonl`, so the stem is the id."""
+    return _stem(transcript_path)
+
+
 def _archive(transcript_path, session_id):
-    session = session_id or _stem(transcript_path)
+    session = session_id or session_id_for(transcript_path)
     destination = paths.archive_path(session)
     members = _members(session, transcript_path)
     if not destination or not members:

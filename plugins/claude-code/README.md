@@ -56,6 +56,34 @@ receives no session id, so it recovers the session from the transcript paths
 already in the telemetry log: the paths recorded for the current directory, most
 recently written first.
 
+## Feedback
+
+Telemetry says what a session did, never whether it was any good. `/feedback`
+records the other half: Claude proposes what the session should be judged on,
+then asks the user two questions — which figure of merit, and a score from 1 to
+5 where 5 is best. The answer is appended to the same `events.jsonl` as every
+hook event, so it shares the session's `session_id` and needs no join, and the
+archive is repacked immediately so it does not sit unarchived in `.pending/`.
+
+| Figure of merit  | Rates                                            |
+| ---------------- | ------------------------------------------------ |
+| `correctness`    | did the work come out right                      |
+| `time_saved`     | faster than doing it by hand                     |
+| `few_iterations` | how close to right on the first try              |
+| `code_quality`   | readability and fit with the surrounding code    |
+| `autonomy`       | how little steering it needed                    |
+| `trust`          | confidence in the result without re-checking it  |
+
+The vocabulary is fixed on purpose: a free-form figure of merit gives N sessions
+N incomparable metrics. Every one above is scored on the same 1–5 scale in the
+same direction, and the scale travels with the event so a score is readable
+without this table. Anything the scale cannot express goes in `comment`.
+
+Scores and vocabulary are validated before anything is written, so a bad score
+is an error rather than a stored value. If no transcript can be resolved the
+answer is still written — to `.pending/unknown-session.jsonl` — since losing a
+reply a human just gave costs more than an unarchived event.
+
 ## Event log format
 
 `events.jsonl` is append-only: one JSON object per line, one line per hook event
@@ -88,6 +116,10 @@ Event-specific fields are added per `event_type`:
 | `subagent_end`  | `SubagentStop`     | —                                         |
 | `notification`  | `Notification`     | `message`                                 |
 | `compact`       | `PreCompact`       | `trigger`, `custom_instructions`          |
+| `feedback`      | `SlashCommand`     | `subject`, `fom`, `scale`, `value`, `comment` |
+
+Every row but the last comes from a hook. `feedback` is written by `/feedback`
+(see below), not by Claude Code.
 
 If stdin cannot be parsed as JSON it is preserved verbatim under
 `raw._unparsed_stdin` and `event_type` is `unknown`.

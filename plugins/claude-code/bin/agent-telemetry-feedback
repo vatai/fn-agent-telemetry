@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+# Claude Code plugin wrapper: record one piece of user feedback for this session.
+# Backs the /feedback command. Arguments are forwarded verbatim and validated in
+# Python, so a bad score or an unknown figure of merit is reported, not stored.
+# Prints one status line, which the command reports back to the user.
+
+plugin_root="${CLAUDE_PLUGIN_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}"
+
+PYTHONPATH="$plugin_root${PYTHONPATH:+:$PYTHONPATH}" \
+  python3 -m agent_telemetry.feedback "$@"
