@@ -39,7 +39,7 @@ NATIVE_EVENT = "SlashCommand"
 
 
 def main(argv=None):
-    """Entry point for the manual `/feedback` command. Prints one status line."""
+    """Entry point for the manual `/fn-eval` command. Prints one status line."""
     args = _parse_args(sys.argv[1:] if argv is None else argv)
     transcript = snapshot.resolve_transcript(os.getcwd())
     recorded = writer.append_event(_build_event(args, transcript))

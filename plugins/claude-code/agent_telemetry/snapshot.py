@@ -8,7 +8,7 @@ assistant output, token usage and cost live -- none of them reach a hook payload
 best-effort and never interrupts a session.
 
 Nothing here runs on its own. Archiving happens only as the last step of the
-`/feedback` command, so a session nobody rates leaves no archive at all.
+`/fn-eval` command, so a session nobody rates leaves no archive at all.
 """
 
 import datetime as _dt
@@ -111,7 +111,7 @@ def _remove(path):
 
 
 def resolve_transcript(cwd):
-    """Newest transcript recorded for ``cwd``, for the `/feedback` command.
+    """Newest transcript recorded for ``cwd``, for the `/fn-eval` command.
 
     Slash commands receive no session id, so the session is recovered from the
     transcript paths the hooks already logged: narrow to the session directory,

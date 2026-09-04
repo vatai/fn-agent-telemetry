@@ -24,7 +24,7 @@ Hooks record events from then on, with nothing to run. To archive a session, run
 this once before you leave it:
 
 ```
-/feedback
+/fn-eval
 ```
 
 Claude proposes what the session should be judged on, then asks two questions —
@@ -40,7 +40,7 @@ archive.
 | `autonomy`       | how little steering it needed                    |
 | `trust`          | confidence in the result without re-checking it  |
 
-**Skip `/feedback` and you get no archive.** Nothing else triggers one — not a
+**Skip `/fn-eval` and you get no archive.** Nothing else triggers one — not a
 hook, not session end. The events survive in `.pending/`, but the transcript,
 and with it the token counts and cost, is gone once Claude Code prunes
 `~/.claude/projects`.
@@ -67,7 +67,7 @@ anything it cannot express goes in `--comment`. Widen it in
 home directory can be resolved.
 
 One archive per session, named for when the session *started*, in local time —
-so listings sort chronologically and re-running `/feedback` overwrites the
+so listings sort chronologically and re-running `/fn-eval` overwrites the
 archive instead of adding a near-identical one. Timestamps *inside* are UTC.
 
 A zip cannot be appended to and each hook is its own process, so events
@@ -109,7 +109,7 @@ Plus, per `event_type`:
 | `compact`       | `PreCompact`       | `trigger`, `custom_instructions`          |
 | `feedback`      | `SlashCommand`     | `subject`, `fom`, `scale`, `value`, `comment` |
 
-Every row but the last comes from a hook; `feedback` is written by `/feedback`.
+Every row but the last comes from a hook; `feedback` is written by `/fn-eval`.
 It shares the session's `session_id` with every other event, so usage and rating
 need no join. If stdin cannot be parsed as JSON it is kept verbatim under
 `raw._unparsed_stdin` with `event_type` `unknown`.
