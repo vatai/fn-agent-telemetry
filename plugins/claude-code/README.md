@@ -51,7 +51,22 @@ anything it cannot express goes in `--comment`. Widen it in
 
 ### 3. Upload
 
-*TODO.*
+Each run of `/fn-eval` leaves one file to send, in `~/agent-telemetry` (or
+`$AGENT_TELEMETRY_DIR`):
+
+```
+20260904-164832-610153d8-b1f9-48dc-b2e6-43b8febca643.zip
+└──────┬──────┘ └────────────────┬───────────────────┘
+  when the session          Claude Code
+  started, local time       session id
+```
+
+One per session, `<date>-<time>-<session_id>.zip` — `YYYYMMDD-HHMMSS`, so a
+listing is already in chronological order and the name is unique across users
+and machines. Re-running `/fn-eval` overwrites the session's own file rather
+than adding another, so the whole directory is always the complete set.
+
+*TODO: where to send them.*
 
 ## Output layout
 
