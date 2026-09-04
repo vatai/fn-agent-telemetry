@@ -1,7 +1,9 @@
 # fn-claude-telemetry (Claude Code plugin)
 
-Archives every local Claude Code CLI session as a zip holding that session's
-hook-event log and its transcript. Telemetry is best-effort and never interrupts
+Archives a local Claude Code CLI session as a zip holding that session's
+hook-event log, its transcript, and the user's own rating of how the session
+went. Hooks record continuously; `/feedback` is the single command that asks for
+the rating and packs the archive. Telemetry is best-effort and never interrupts
 a session.
 
 ## Layout
@@ -11,18 +13,23 @@ Everything goes in one directory, `~/agent-telemetry` unless
 
 ```
 ~/agent-telemetry/
-├── <session_id>.zip
-│   ├── events.jsonl                   # one JSON object per hook event
+├── 20260904-164832-<session_id>.zip    # <date>-<time>-<session_id>
+│   ├── events.jsonl                   # hook events, plus the user's rating
 │   └── transcript.jsonl               # copy of the session transcript
 └── .pending/<session_id>.jsonl        # live event log, folded in at each snapshot
 ```
 
-One archive per session. A zip cannot be appended to and each hook runs as its
-own process, so events accumulate in `.pending/` and the archive is rewritten
-whole at every snapshot. Since snapshots are manual, a session that is never
-snapshotted has no archive at all and `.pending/` holds everything kept of it —
-its transcript, and so its token counts and cost, are lost once Claude Code
-prunes `~/.claude/projects`.
+One archive per session, named for when that session *started* — in local time,
+so a listing sorts chronologically and repacking a session overwrites its
+archive rather than leaving a trail of near-identical zips. Every timestamp
+*inside* the archive is UTC.
+
+A zip cannot be appended to and each hook runs as its own process, so events
+accumulate in `.pending/` and the archive is rewritten whole at every snapshot.
+Since snapshots only happen when someone runs `/feedback`, a session nobody
+rates has no archive at all and `.pending/` holds everything kept of it — its
+transcript, and so its token counts and cost, are lost once Claude Code prunes
+`~/.claude/projects`.
 
 ## Distribute & install
 
@@ -40,30 +47,28 @@ Requires `python3` on `PATH`. Verify with `claude plugin details fn-claude-telem
 
 Hooks no-op silently only when no home directory can be resolved.
 
-## Snapshots
+## `/feedback` — the only command
 
-Token usage, cost and assistant output never reach a hook payload; they live in
-the session transcript. A snapshot repacks the session archive from the pending
-event log and the current transcript. The zip is staged and renamed into place,
-so an interrupted snapshot never damages the previous archive, and each one
-fully replaces the last — both sources are append-only. A session with no
-transcript yet is archived with `events.jsonl` alone.
+Telemetry says what a session did, never whether it was any good, and token
+usage, cost and assistant output never reach a hook payload at all — they live
+in the transcript. `/feedback` closes both gaps in one step:
 
-Snapshots are manual only: run `/snapshot`, and nothing is archived if you never
-do. The hooks record events but never trigger one, so ending a session without
-`/snapshot` leaves that session's data in `.pending/` and no zip. A slash command
-receives no session id, so it recovers the session from the transcript paths
-already in the telemetry log: the paths recorded for the current directory, most
-recently written first.
+1. Claude proposes what the session should be judged on.
+2. The user answers two questions — which figure of merit, and a score from 1
+   to 5 where 5 is best.
+3. The answer is appended to the same `events.jsonl` as every hook event, so it
+   shares the session's `session_id` and needs no join.
+4. The archive is repacked from the pending event log and the current
+   transcript, so the rating never sits unarchived in `.pending/`.
 
-## Feedback
+Nothing else triggers a snapshot — no hook, no session end. The zip is staged
+and renamed into place, so an interrupted run never damages the previous
+archive, and each run fully replaces the last; both sources are append-only. A
+session with no transcript yet is archived with `events.jsonl` alone.
 
-Telemetry says what a session did, never whether it was any good. `/feedback`
-records the other half: Claude proposes what the session should be judged on,
-then asks the user two questions — which figure of merit, and a score from 1 to
-5 where 5 is best. The answer is appended to the same `events.jsonl` as every
-hook event, so it shares the session's `session_id` and needs no join, and the
-archive is repacked immediately so it does not sit unarchived in `.pending/`.
+A slash command receives no session id, so the session is recovered from the
+transcript paths already in the telemetry log: the paths recorded for the
+current directory, most recently written first.
 
 | Figure of merit  | Rates                                            |
 | ---------------- | ------------------------------------------------ |
