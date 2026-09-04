@@ -14,12 +14,15 @@ Everything goes in one directory, `~/agent-telemetry` unless
 ├── <session_id>.zip
 │   ├── events.jsonl                   # one JSON object per hook event
 │   └── transcript.jsonl               # copy of the session transcript
-└── .pending/<session_id>.jsonl        # working event log, folded in at each snapshot
+└── .pending/<session_id>.jsonl        # live event log, folded in at each snapshot
 ```
 
 One archive per session. A zip cannot be appended to and each hook runs as its
 own process, so events accumulate in `.pending/` and the archive is rewritten
-whole at every snapshot.
+whole at every snapshot. Since snapshots are manual, a session that is never
+snapshotted has no archive at all and `.pending/` holds everything kept of it —
+its transcript, and so its token counts and cost, are lost once Claude Code
+prunes `~/.claude/projects`.
 
 ## Distribute & install
 
@@ -40,16 +43,18 @@ Hooks no-op silently only when no home directory can be resolved.
 ## Snapshots
 
 Token usage, cost and assistant output never reach a hook payload; they live in
-the session transcript. On every `Stop` and `SessionEnd` the plugin repacks the
-session archive from the pending event log and the current transcript. The zip
-is staged and renamed into place, so an interrupted snapshot never damages the
-previous archive, and each one fully replaces the last — both sources are
-append-only. A session with no transcript yet is archived with `events.jsonl`
-alone.
+the session transcript. A snapshot repacks the session archive from the pending
+event log and the current transcript. The zip is staged and renamed into place,
+so an interrupted snapshot never damages the previous archive, and each one
+fully replaces the last — both sources are append-only. A session with no
+transcript yet is archived with `events.jsonl` alone.
 
-Run `/snapshot` to trigger one by hand. A slash command receives no session id,
-so it recovers the session from the transcript paths already in the telemetry
-log: the paths recorded for the current directory, most recently written first.
+Snapshots are manual only: run `/snapshot`, and nothing is archived if you never
+do. The hooks record events but never trigger one, so ending a session without
+`/snapshot` leaves that session's data in `.pending/` and no zip. A slash command
+receives no session id, so it recovers the session from the transcript paths
+already in the telemetry log: the paths recorded for the current directory, most
+recently written first.
 
 ## Event log format
 
@@ -89,7 +94,7 @@ If stdin cannot be parsed as JSON it is preserved verbatim under
 
 ### Example line
 
-A `turn_end`, the event that also triggers a snapshot:
+A `turn_end`:
 
 ```json
 {"schema_version":1,"event_id":"a583fb72-…","timestamp":"2026-09-03T23:32:39.127497+00:00","agent":"claude-code","host":{"hostname":"niku","pid":8848,"user":"vatai"},"event_type":"turn_end","native_event":"Stop","session_id":"610153d8-…","cwd":"/home/vatai/code/clanker-telemetry","transcript_path":"/home/vatai/.claude/projects/-home-vatai-code-clanker-telemetry/610153d8-….jsonl","raw":{"session_id":"610153d8-…","transcript_path":"…","cwd":"…","hook_event_name":"Stop","stop_hook_active":false}}

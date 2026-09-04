@@ -11,9 +11,7 @@ alter an agent session.
 import json
 import sys
 
-from . import adapters, events, snapshot, writer
-
-SNAPSHOT_EVENTS = frozenset({"turn_end", "session_end"})
+from . import adapters, events, writer
 
 
 def main(argv=None):
@@ -35,13 +33,6 @@ def _run(argv):
         return
     event = events.build_event(agent, adapter.normalize(payload), payload)
     writer.append_event(event)
-    _snapshot_at_boundary(event)
-
-
-def _snapshot_at_boundary(event):
-    """Refresh the transcript copy whenever a turn or the session ends."""
-    if event.get("event_type") in SNAPSHOT_EVENTS:
-        snapshot.snapshot(event.get("transcript_path"), event.get("session_id"))
 
 
 def _read_payload():

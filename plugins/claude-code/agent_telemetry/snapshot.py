@@ -6,6 +6,9 @@ output, token usage and cost live -- none of them reach a hook payload -- and
 archiving it also outlives Claude Code's own retention of ``~/.claude/projects``.
 Like every write in this package, a snapshot is best-effort and never interrupts
 a session.
+
+Snapshots are taken by hand only, through the `/snapshot` command; no hook
+triggers one, so a session that is never snapshotted leaves no archive.
 """
 
 import json
