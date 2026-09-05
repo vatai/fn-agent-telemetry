@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+# opencode plugin wrapper: record one piece of user feedback for this session.
+# Backs the /fn-eval command. Arguments are forwarded verbatim and validated in
+# Python, so a bad score or an unknown figure of merit is reported, not stored.
+# --agent names which agent's events the session is looked up among; it is fixed
+# here so that whoever runs the command never has to supply it.
+# The shared agent_telemetry package ships inside the Claude Code plugin, whose
+# installer copies only its own directory, so it is read from the checkout.
+# Prints one status line, which the command reports back to the user.
+
+package_root=$(CDPATH= cd -- "$(dirname -- "$0")/../../claude-code" && pwd)
+
+PYTHONPATH="$package_root${PYTHONPATH:+:$PYTHONPATH}" \
+  python3 -m agent_telemetry.feedback --agent opencode "$@"

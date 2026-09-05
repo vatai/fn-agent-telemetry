@@ -1,9 +1,10 @@
 """Per-agent adapters that normalize native hook payloads."""
 
-from . import claude_code
+from . import claude_code, opencode
 
 _ADAPTERS = {
     claude_code.AGENT: claude_code,
+    opencode.AGENT: opencode,
 }
 
 

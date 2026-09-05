@@ -24,8 +24,7 @@ import argparse
 import os
 import sys
 
-from . import events, snapshot, writer
-from .adapters.claude_code import AGENT
+from . import adapters, events, paths, snapshot, writer
 
 RATING = {"min": 1, "max": 5, "integer": True, "unit": None, "better": "higher"}
 
@@ -56,11 +55,19 @@ NATIVE_EVENT = "SlashCommand"
 def main(argv=None):
     """Entry point for the manual `/fn-eval` command. Prints one status line."""
     args = _parse_args(sys.argv[1:] if argv is None else argv)
-    transcript = snapshot.resolve_transcript(os.getcwd())
-    recorded = writer.append_event(_build_event(args, transcript))
-    archive = snapshot.snapshot(transcript) if transcript else None
+    session_id, transcript = snapshot.resolve_session(os.getcwd(), args.agent)
+    recorded = writer.append_event(_build_event(args, session_id, transcript))
+    archive = snapshot.snapshot(session_id, transcript) if session_id else None
     print(_status(recorded, archive))
     return 0
+
+
+def rated(session_id):
+    """Whether `/fn-eval` has already recorded an answer for this session."""
+    log = paths.log_path(session_id)
+    if not log or not os.path.isfile(log):
+        return False
+    return any(event.get("event_type") == EVENT_TYPE for event in events.read_log(log))
 
 
 def scale_of(fom):
@@ -74,11 +81,11 @@ def describe_scale(scale):
     return f"{bound}{unit}, {scale['better']} is better"
 
 
-def _build_event(args, transcript):
+def _build_event(args, session_id, transcript):
     normalized = {
         "event_type": EVENT_TYPE,
         "native_event": NATIVE_EVENT,
-        "session_id": snapshot.session_id_for(transcript),
+        "session_id": session_id,
         "cwd": os.getcwd(),
         "transcript_path": transcript,
         "subject": args.subject,
@@ -87,7 +94,7 @@ def _build_event(args, transcript):
         "value": _plain(args.value),
         "comment": args.comment,
     }
-    return events.build_event(AGENT, normalized, vars(args))
+    return events.build_event(args.agent, normalized, vars(args))
 
 
 def _plain(value):
@@ -100,11 +107,14 @@ def _status(recorded, archive):
         return "feedback not recorded"
     if archive:
         return f"feedback recorded -> {archive}"
-    return "feedback recorded, pending: no transcript found to archive it with"
+    return "feedback recorded, pending: no session found to archive it with"
 
 
 def _parse_args(argv):
     parser = argparse.ArgumentParser(prog="agent-telemetry-feedback")
+    # Supplied by each plugin's own wrapper, never typed by whoever runs the
+    # command: it selects which agent's events this session is looked up among.
+    parser.add_argument("--agent", required=True, choices=adapters.known_agents())
     parser.add_argument("--subject", required=True, help="what was being judged")
     parser.add_argument("--fom", required=True, choices=sorted(FIGURES_OF_MERIT), help=_fom_help())
     parser.add_argument("--value", required=True, type=float, help="scale depends on --fom")

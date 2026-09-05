@@ -1,10 +1,11 @@
-"""Enrichment shared by all agent adapters.
+"""Enrichment shared by all agent adapters, and reading back what was written.
 
 Adapters normalize their native payloads into a common event shape; this module
 wraps that with environment metadata and the raw payload for lossless capture.
 """
 
 import datetime as _dt
+import json
 import os
 import socket
 import uuid
@@ -24,6 +25,26 @@ def build_event(agent, normalized, raw_payload):
     event.update(normalized)
     event["raw"] = raw_payload
     return event
+
+
+def read_log(path):
+    """Yield the events in one JSONL log, skipping any line that is not JSON.
+
+    A log is appended to by a live session, so its last line can be half
+    written; a reader that cannot tolerate that would fail at random.
+    """
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            event = _parse(line)
+            if event is not None:
+                yield event
+
+
+def _parse(line):
+    try:
+        return json.loads(line)
+    except ValueError:
+        return None
 
 
 def _now_iso():

@@ -4,7 +4,7 @@ One archive per session is the output, holding both of that session's files:
 
     <AGENT_TELEMETRY_DIR>/<date>-<time>-<session_id>.zip
         events.jsonl        one JSON object per hook event
-        transcript.jsonl    copy of the Claude Code session transcript
+        transcript.jsonl    copy of the session's own conversation record
 
 The archive is named for when the session started, not for when it was packed,
 so a directory listing sorts chronologically and repacking a session replaces
@@ -12,7 +12,8 @@ its archive instead of adding another.
 
 Hook events arrive one process at a time and a zip cannot be appended to, so the
 event log accumulates in a working file under `.pending/` and is folded into the
-archive at every snapshot.
+archive at every snapshot. An agent that keeps no transcript file of its own
+dumps one next to that log, which is why the two are told apart by name here.
 
 `AGENT_TELEMETRY_DIR` is the only knob; everything else is derived from it.
 """
@@ -26,6 +27,7 @@ TELEMETRY_DIR_ENV = "AGENT_TELEMETRY_DIR"
 DEFAULT_DIR_NAME = "agent-telemetry"
 PENDING_DIR_NAME = ".pending"
 LOG_SUFFIX = ".jsonl"
+TRANSCRIPT_SUFFIX = ".transcript.jsonl"
 ARCHIVE_SUFFIX = ".zip"
 ARCHIVE_STAMP_FORMAT = "%Y%m%d-%H%M%S"
 EVENTS_MEMBER = "events.jsonl"
@@ -53,8 +55,23 @@ def pending_dir():
 
 def log_path(session_id):
     """Working event log for a session, folded into the archive at each snapshot."""
-    directory = pending_dir()
-    return os.path.join(directory, _session_name(session_id) + LOG_SUFFIX) if directory else None
+    return _pending_path(session_id, LOG_SUFFIX)
+
+
+def transcript_path(session_id):
+    """Where an agent that keeps no transcript file of its own dumps one.
+
+    Claude Code names its transcript in every hook payload and never needs this;
+    opencode keeps its messages in a database, so its plugin dumps them here at
+    the end of each turn and its adapter reports this path in place of a native
+    one.
+    """
+    return _pending_path(session_id, TRANSCRIPT_SUFFIX)
+
+
+def is_log(name):
+    """Event logs and dumped transcripts share `.jsonl` and share a directory."""
+    return name.endswith(LOG_SUFFIX) and not name.endswith(TRANSCRIPT_SUFFIX)
 
 
 def archive_path(session_id, started_at=None):
@@ -64,6 +81,11 @@ def archive_path(session_id, started_at=None):
         return None
     name = _stamp(started_at) + "-" + _session_name(session_id) + ARCHIVE_SUFFIX
     return os.path.join(directory, name)
+
+
+def _pending_path(session_id, suffix):
+    directory = pending_dir()
+    return os.path.join(directory, _session_name(session_id) + suffix) if directory else None
 
 
 def _stamp(started_at):

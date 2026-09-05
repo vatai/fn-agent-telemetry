@@ -1,42 +1,49 @@
 """Per-session telemetry archives.
 
-A snapshot packs one session's hook events and its Claude Code transcript into
+A snapshot packs one session's hook events and its transcript into
 `<AGENT_TELEMETRY_DIR>/<date>-<time>-<session_id>.zip`. The transcript is where
 assistant output, token usage and cost live -- none of them reach a hook payload
--- and archiving it also outlives Claude Code's own retention of
-``~/.claude/projects``. Like every write in this package, a snapshot is
-best-effort and never interrupts a session.
+-- and archiving it also outlives the agent's own retention of the conversation.
+Like every write in this package, a snapshot is best-effort and never interrupts
+a session.
 
 Nothing here runs on its own. Archiving happens only as the last step of the
 `/fn-eval` command, so a session nobody rates leaves no archive at all.
 """
 
 import datetime as _dt
-import json
 import os
 import tempfile
 import zipfile
 
-from . import paths
+from . import events, paths
 
 
-def snapshot(transcript_path, session_id=None):
+def snapshot(session_id, transcript_path):
     """Archive one session. Returns the archive path, or None if nothing was written."""
     try:
-        return _archive(transcript_path, session_id)
+        return _archive(session_id, transcript_path)
     except Exception:
         return None
 
 
-def session_id_for(transcript_path):
-    """Claude Code names each transcript `<session_id>.jsonl`, so the stem is the id."""
-    return _stem(transcript_path)
+def resolve_session(cwd, agent):
+    """The session `/fn-eval` was typed in, and the transcript it recorded.
+
+    A slash command receives no session id, so the session is recovered from the
+    events its own hooks already logged: of the logs holding an event for this
+    agent in this directory, the most recently written one is the caller's.
+    """
+    for log in _logs_by_recency():
+        session_id, transcript_path = _last_event_in(log, cwd, agent)
+        if session_id:
+            return session_id, transcript_path
+    return None, None
 
 
-def _archive(transcript_path, session_id):
-    session = session_id or session_id_for(transcript_path)
-    destination = paths.archive_path(session, _session_started(session))
-    members = _members(session, transcript_path)
+def _archive(session_id, transcript_path):
+    destination = paths.archive_path(session_id, _session_started(session_id))
+    members = _members(session_id, transcript_path)
     if not destination or not members:
         return None
     os.makedirs(os.path.dirname(destination), exist_ok=True)
@@ -44,10 +51,10 @@ def _archive(transcript_path, session_id):
     return destination
 
 
-def _members(session, transcript_path):
+def _members(session_id, transcript_path):
     """Map archive member name to source file, skipping whatever does not exist."""
     sources = {
-        paths.EVENTS_MEMBER: paths.log_path(session),
+        paths.EVENTS_MEMBER: paths.log_path(session_id),
         paths.TRANSCRIPT_MEMBER: transcript_path,
     }
     return {name: path for name, path in sources.items() if path and os.path.isfile(path)}
@@ -72,7 +79,7 @@ def _stage(destination):
     return staged
 
 
-def _session_started(session):
+def _session_started(session_id):
     """When the session's first event was recorded, in local time.
 
     The archive is named for this rather than for the moment it is packed, so
@@ -80,16 +87,9 @@ def _session_started(session):
     near-identical zips. Events store UTC; the name is local because it is read
     by whoever is browsing the directory.
     """
-    log = paths.log_path(session)
-    first = _first_event(log) if log and os.path.isfile(log) else {}
+    log = paths.log_path(session_id)
+    first = next(events.read_log(log), {}) if log and os.path.isfile(log) else {}
     return _local_time(first.get("timestamp"))
-
-
-def _first_event(log):
-    with open(log, encoding="utf-8") as handle:
-        for line in handle:
-            return _parse(line)
-    return {}
 
 
 def _local_time(timestamp):
@@ -99,8 +99,21 @@ def _local_time(timestamp):
         return None
 
 
-def _stem(path):
-    return os.path.splitext(os.path.basename(path))[0] if path else None
+def _logs_by_recency():
+    directory = paths.pending_dir()
+    if not directory or not os.path.isdir(directory):
+        return []
+    logs = [os.path.join(directory, n) for n in os.listdir(directory) if paths.is_log(n)]
+    return sorted(logs, key=os.path.getmtime, reverse=True)
+
+
+def _last_event_in(log, cwd, agent):
+    """Session id and transcript path of the last event in `log` from this caller."""
+    found = (None, None)
+    for event in events.read_log(log):
+        if event.get("cwd") == cwd and event.get("agent") == agent:
+            found = (event.get("session_id"), event.get("transcript_path"))
+    return found
 
 
 def _remove(path):
@@ -108,45 +121,3 @@ def _remove(path):
         os.remove(path)
     except OSError:
         pass
-
-
-def resolve_transcript(cwd):
-    """Newest transcript recorded for ``cwd``, for the `/fn-eval` command.
-
-    Slash commands receive no session id, so the session is recovered from the
-    transcript paths the hooks already logged: narrow to the session directory,
-    then take the most recently written, which is the caller's own transcript.
-    """
-    candidates = [p for p in _recorded_transcripts(cwd) if os.path.isfile(p)]
-    return max(candidates, key=os.path.getmtime) if candidates else None
-
-
-def _recorded_transcripts(cwd):
-    recorded = set()
-    for log in _event_logs():
-        with open(log, encoding="utf-8") as handle:
-            recorded.update(p for p in _transcript_paths(handle, cwd) if p)
-    return recorded
-
-
-def _event_logs():
-    directory = paths.pending_dir()
-    if not directory or not os.path.isdir(directory):
-        return []
-    names = sorted(n for n in os.listdir(directory) if n.endswith(paths.LOG_SUFFIX))
-    return [os.path.join(directory, n) for n in names]
-
-
-def _transcript_paths(lines, cwd):
-    for line in lines:
-        event = _parse(line)
-        if event.get("cwd") == cwd:
-            yield event.get("transcript_path")
-
-
-def _parse(line):
-    try:
-        return json.loads(line)
-    except ValueError:
-        return {}
-
