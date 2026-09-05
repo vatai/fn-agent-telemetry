@@ -6,12 +6,15 @@
  * taxonomy. Nothing is awaited on the hot path and every failure is swallowed,
  * so telemetry can never interrupt or slow an opencode session.
  *
- * Two things have no Claude Code equivalent and are solved here. opencode has
+ * Three things have no Claude Code equivalent and are solved here. opencode has
  * no transcript file to point at -- its messages live in a database -- so at
  * the end of every turn they are read back over the SDK and dumped beside the
- * event log. And a command has no ${CLAUDE_PLUGIN_ROOT} to resolve the feedback
- * executable with, so `shell.env` hands the shell tool one.
+ * event log. A command has no ${CLAUDE_PLUGIN_ROOT} to resolve the feedback
+ * executable with, so `shell.env` hands the shell tool one. And an installed
+ * copy of this plugin has nothing in ~/.config/opencode/command, so /fn-eval is
+ * registered from the `config` hook rather than left as a file to link.
  */
+import { readFileSync } from "node:fs"
 import { spawn } from "node:child_process"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -20,9 +23,10 @@ const AGENT = "opencode"
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const BIN = resolve(HERE, "../bin")
+const FN_EVAL = resolve(HERE, "../command/fn-eval.md")
 // The shared package ships inside the Claude Code plugin, because that
 // installer copies only its own directory. Every other integration reads it
-// from the repository checkout, as here.
+// from wherever this file sits -- a checkout, or an installed package.
 const PACKAGE_ROOT = resolve(HERE, "../../claude-code")
 
 const RECORDED_EVENTS = new Set([
@@ -32,6 +36,8 @@ const RECORDED_EVENTS = new Set([
   "session.compacted",
   "session.error",
 ])
+
+const FRONTMATTER = /^---\n([\s\S]*?)\n---\n/
 
 const sessionOf = (event) => event.properties?.sessionID ?? event.properties?.info?.id
 
@@ -53,6 +59,16 @@ const feed = (module, args, payload) => {
   child.stdin.end(JSON.stringify(payload))
 }
 
+/** One markdown command file, as the command definition opencode expects. */
+const commandFrom = (path) => {
+  const file = readFileSync(path, "utf8")
+  const frontmatter = file.match(FRONTMATTER)
+  return {
+    description: frontmatter?.[1].match(/^description:\s*(.+)$/m)?.[1],
+    template: file.replace(FRONTMATTER, ""),
+  }
+}
+
 export const AgentTelemetry = async ({ client, directory }) => {
   const record = (hook, payload) => feed("hook", [AGENT], { hook, directory, ...payload })
 
@@ -63,6 +79,12 @@ export const AgentTelemetry = async ({ client, directory }) => {
   }
 
   return {
+    // Left alone if the user has defined an fn-eval of their own.
+    config: quietly(async (config) => {
+      config.command ??= {}
+      config.command["fn-eval"] ??= commandFrom(FN_EVAL)
+    }),
+
     event: quietly(async ({ event }) => {
       if (!RECORDED_EVENTS.has(event.type)) return
       record(event.type, { sessionID: sessionOf(event), ...event.properties })

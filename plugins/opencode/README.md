@@ -10,21 +10,47 @@ Best-effort — it never interrupts a session.
 
 ### 1. Install
 
-opencode loads plugins and commands from its own config directory, so link this
-directory's two files into it:
+One line of config is the whole install: opencode resolves each `plugin` entry
+as an npm specifier or a filesystem path, and the plugin registers its own
+`/fn-eval`, so there is no second file to place.
+
+Write it to `~/.config/opencode/opencode.json`. opencode loads and merges
+`config.json`, `opencode.json` and `opencode.jsonc` from that directory, so a
+separate file leaves an existing `opencode.jsonc` untouched.
+
+From a checkout:
+
+```jsonc
+{ "plugin": ["/path/to/clanker-telemetry/plugins/opencode/plugin/agent-telemetry.js"] }
+```
+
+From a tarball, for a machine with no checkout — `npm pack` at the repo root
+produces it, and it carries the Python package too:
+
+```jsonc
+{ "plugin": ["file:/path/to/clanker-telemetry-0.1.0.tgz"] }
+```
+
+Or, once published to npm, in place of all of the above:
+
+```sh
+opencode plugin clanker-telemetry -g
+```
 
 ```sh
 export AGENT_TELEMETRY_DIR=~/somewhere-else          # optional; defaults to ~/agent-telemetry
-mkdir -p ~/.config/opencode/plugin ~/.config/opencode/command
-ln -s "$PWD/plugin/agent-telemetry.js" ~/.config/opencode/plugin/
-ln -s "$PWD/command/fn-eval.md" ~/.config/opencode/command/
 ```
 
-**Link, do not copy.** The plugin locates the shared Python package relative to
-its own file, so it has to stay inside the checkout. Needs `python3` on `PATH`.
-Restart opencode; `/fn-eval` should appear in the command list.
+Needs `python3` on `PATH`. Restart opencode; `/fn-eval` should appear in the
+command list. Per project rather than per user, the same entry works in
+`./opencode.json`.
 
-Per project instead of per user, use `.opencode/plugin/` and `.opencode/command/`.
+Point the entry at the plugin *inside* its checkout or package — it locates the
+shared Python package relative to its own file, so a copy taken out of the tree
+will not work. Measured against opencode 1.18: an absolute path to the plugin
+file, an absolute path to a package directory, and `file:<tarball>` all load;
+`git+https://…​.git` and `github:owner/repo` are ignored with no error logged,
+so installing straight from a git host is not an option.
 
 ### 2. Use
 
@@ -50,7 +76,7 @@ field on every event says which agent produced it.
 
 ## What differs from the Claude Code plugin
 
-Everything below the adapter is shared. These four things are not.
+Everything below the adapter is shared. These five things are not.
 
 **Hooks are a module, not a subprocess.** Claude Code declares nine hooks in
 `hooks.json` and runs an executable per event. opencode loads
@@ -64,6 +90,13 @@ to `.pending/<session_id>.transcript.jsonl`, which is the path the adapter
 reports as `transcript_path`. That dump also repacks a session that has already
 been rated, because `/fn-eval` packs its archive in the middle of the turn it
 runs in — without the repack, the archive would miss that last turn.
+
+**The command ships inside the plugin.** A Claude Code plugin declares its
+commands as files and the installer places them. Nothing places a file for an
+opencode plugin installed from npm or a tarball, so the `config` hook registers
+`/fn-eval` from `command/fn-eval.md` at load time — description read from the
+frontmatter, body used as the template. An `fn-eval` the user has defined
+themselves is left alone.
 
 **There is no `${CLAUDE_PLUGIN_ROOT}`.** The plugin's `shell.env` hook exports
 `AGENT_TELEMETRY_BIN` into the shell tool's environment, and `/fn-eval` resolves
