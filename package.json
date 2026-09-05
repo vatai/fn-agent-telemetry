@@ -1,0 +1,13 @@
+{
+  "name": "clanker-telemetry",
+  "version": "0.1.0",
+  "description": "Append-only telemetry capture for local opencode and Claude Code CLI sessions",
+  "type": "module",
+  "main": "plugins/opencode/plugin/agent-telemetry.js",
+  "files": [
+    "plugins/opencode",
+    "plugins/claude-code/agent_telemetry",
+    "!**/__pycache__"
+  ],
+  "license": "MIT"
+}
