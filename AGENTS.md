@@ -8,11 +8,11 @@ transcript, and the user's rating.
 
 | File | Covers |
 | ---- | ------ |
-| `survey-collection-plan.md` | Goal, Specification, Plan/Steps — this repo's `PLAN.md`. Keep the Plan/Steps section updated; never modify Goal or Specification. |
+| `PLAN.md` | Goal, Specification, Plan/Steps. Keep the Plan/Steps section updated; never modify Goal or Specification. |
 | `plugins/claude-code/README.md` | The shared reference: install, `/fn-eval`, figure-of-merit table, event schema, archive layout, Claude Code transcript format. |
 | `plugins/opencode/README.md` | Only what differs for opencode; defers to the above for everything shared. |
 
-Step status lives in `survey-collection-plan.md`, not here.
+Step status lives in `PLAN.md`, not here.
 
 ## Layout
 
