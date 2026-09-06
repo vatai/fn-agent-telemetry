@@ -8,6 +8,10 @@ https://docs.claude.com/en/docs/claude-code/hooks
 
 AGENT = "claude-code"
 
+# The transcript is finished as the session ends -- the cost lands in its last
+# line -- so a rated session is worth packing a second time once it is over.
+REPACK_AT_SESSION_END = True
+
 _EVENT_TYPES = {
     "SessionStart": "session_start",
     "SessionEnd": "session_end",

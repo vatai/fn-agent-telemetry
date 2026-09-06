@@ -37,21 +37,25 @@ def _run(argv):
         return
     event = events.build_event(agent, adapter.normalize(payload), payload)
     writer.append_event(event)
-    _repack_ended_session(event)
+    _repack_ended_session(adapter, event)
 
 
-def _repack_ended_session(event):
+def _repack_ended_session(adapter, event):
     """Refresh a rated session's archive once the session is over.
 
     Claude Code writes its `cost-state` record only as a session ends, so the
     archive `/fn-eval` packed mid-session can never hold the session's cost.
     Rating is still what creates an archive; this only keeps one from going
     stale, the same way the opencode plugin's end-of-turn dump does.
+
+    Whether an agent's `session_end` is worth repacking on is the adapter's to
+    say: opencode's is a session being *deleted*, and repacking one the user has
+    just discarded would be perverse.
     """
     session_id = event.get("session_id")
-    if event.get("event_type") != "session_end" or not session_id:
+    if not adapter.REPACK_AT_SESSION_END or event.get("event_type") != "session_end":
         return
-    if feedback.rated(session_id):
+    if session_id and feedback.rated(session_id):
         snapshot.snapshot(session_id, event.get("transcript_path"))
 
 

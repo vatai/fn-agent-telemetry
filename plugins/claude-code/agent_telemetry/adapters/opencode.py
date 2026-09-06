@@ -19,6 +19,10 @@ from .. import paths
 
 AGENT = "opencode"
 
+# `session_end` here is `session.deleted`, a session the user threw away, not one
+# that finished; the plugin has already repacked at the end of every turn.
+REPACK_AT_SESSION_END = False
+
 _EVENT_TYPES = {
     "session.created": "session_start",
     "session.deleted": "session_end",
