@@ -26,6 +26,11 @@ lives in `agent_telemetry/adapters/`.
 Consequence: an opencode config entry must point at the plugin *inside* its
 checkout or package; a copy taken out of the tree cannot find the Python.
 
+The read side is `analysis/` — `archives.py` turns each zip into a row,
+`report.py` prints them as a table, CSV or JSON. It is standalone: stdlib only,
+no import from `agent_telemetry`, outside the paths `package.json` ships, so it
+reaches no plugin install. The archive is the interface between the two sides.
+
 ## Invariants
 
 - **Telemetry never interrupts a session.** Best-effort, silent no-op on failure.

@@ -191,5 +191,11 @@ Cumulative, in `cost-state`:
 
 `cost-state` is written at checkpoints, not only at the end — in one 539-line
 transcript both records sat at lines 249 and 251, so the last is not necessarily
-final. Summing `message.usage` across `assistant` records is the reliable route
-to a session total.
+final, and a short session may contain none at all. Take the largest, and treat
+its absence as *unknown* rather than as zero.
+
+Tokens come from `message.usage`, but **sum one usage per `message.id`, not one
+per `assistant` line.** A message is written out one line per content block —
+`thinking` and `text` land on separate lines with separate `uuid`s — and each
+carries the *whole* message's usage, not its own share. Summing per line
+double-counts exactly the messages that thought or called a tool.
