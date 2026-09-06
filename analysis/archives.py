@@ -44,6 +44,9 @@ EVENTS_MEMBER = "events.jsonl"
 TRANSCRIPT_MEMBER = "transcript.jsonl"
 
 TOKEN_FIELDS = ("input", "output", "reasoning", "cache_read", "cache_write")
+# `reasoning` is the thinking part of `output`, not a sixth kind of token, so a
+# total that added it in would count it twice.
+BILLED_FIELDS = ("input", "output", "cache_read", "cache_write")
 FEEDBACK_FIELDS = ("subject", "fom", "value", "unit", "better", "scale", "comment", "legacy_scale")
 
 
@@ -165,7 +168,7 @@ def _usage(agent, transcript):
 
 
 def _no_usage():
-    return dict.fromkeys(TOKEN_FIELDS, 0) | {"cost_usd": None, "models": ""}
+    return _totals([], None, [])
 
 
 def _claude_usage(transcript):
@@ -229,6 +232,7 @@ def _totals(per_message, cost, models):
     for tokens in per_message:
         for field in TOKEN_FIELDS:
             totals[field] += tokens[field]
+    totals["total"] = sum(totals[field] for field in BILLED_FIELDS)
     totals["cost_usd"] = cost
     totals["models"] = ", ".join(dict.fromkeys(name for name in models if name))
     return totals

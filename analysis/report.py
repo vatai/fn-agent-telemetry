@@ -10,9 +10,11 @@ cross-session aggregate is a group-by over the export rather than a mode here.
 
 A value marked `!` was rated against a scale that predates the current
 vocabulary and cannot be compared with today's, and a blank cost means the agent
-archived none -- neither is a zero. `billed in` counts cache reads and writes as
-charged, so it is input volume paid for, not conversation size. See
-`archives.py` for these and for why turn counts do not compare across agents.
+archived none -- neither is a zero. Tokens are split the way they are charged:
+`in`, `cache r`, `cache w` and `out` add up to `total`, while `think` is the
+thinking part of `out` and so is already inside it. Cache reads are counted
+every turn they happen on, so `total` is tokens paid for, not conversation size.
+See `archives.py` for these and for why turn counts do not compare across agents.
 """
 
 import argparse
@@ -30,8 +32,12 @@ COLUMNS = (
     ("prompts", lambda row: str(row["prompts"])),
     ("turns", lambda row: str(row["turns"])),
     ("tools", lambda row: _tools(row)),
-    ("billed in", lambda row: _tokens(row["input"] + row["cache_read"] + row["cache_write"])),
+    ("in", lambda row: _tokens(row["input"])),
+    ("cache r", lambda row: _tokens(row["cache_read"])),
+    ("cache w", lambda row: _tokens(row["cache_write"])),
     ("out", lambda row: _tokens(row["output"])),
+    ("think", lambda row: _tokens(row["reasoning"])),
+    ("total", lambda row: _tokens(row["total"])),
     ("cost", lambda row: _cost(row["cost_usd"])),
     ("rating", lambda row: _rating(row)),
     ("subject", lambda row: (row["subject"] or "")[:40]),
@@ -79,7 +85,7 @@ def _summary(rows):
     costed = [row["cost_usd"] for row in rows if row["cost_usd"] is not None]
     return (
         f"{len(rows)} sessions ({', '.join(agents)}), {len(rated)} rated, "
-        f"{sum(row['output'] for row in rows):,} output tokens, "
+        f"{sum(row['total'] for row in rows):,} tokens, "
         f"${sum(costed):.2f} over the {len(costed)} with a cost recorded"
     )
 
