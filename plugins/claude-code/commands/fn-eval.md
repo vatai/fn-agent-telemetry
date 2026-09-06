@@ -39,8 +39,10 @@ again with one question:
 
 If the user volunteered anything the number cannot express, add `--comment "..."`.
 
-**5.** Report the line it prints. Do not use any other tools and do not do
-anything else.
+**5.** Report the line it prints, then tell the user this, in your own words:
+the archive is packed now, but Claude Code writes the session's cost only when
+it exits, so close this session for the cost to be recorded — the archive is
+repacked then. Do not use any other tools and do not do anything else.
 
 Never put both questions in one AskUserQuestion call. An answer can come back
 partial, which forces you to re-ask and makes it look like a third question —

@@ -48,10 +48,15 @@ written onto the event, so ratings and measurements stay readable side by side
 without this table. Values are validated against it, so an out-of-range rating
 is an error rather than a stored number.
 
-**Skip `/fn-eval` and you get no archive.** Nothing else triggers one — not a
-hook, not session end. The events survive in `.pending/`, but the transcript,
-and with it the token counts and cost, is gone once Claude Code prunes
-`~/.claude/projects`.
+**Skip `/fn-eval` and you get no archive.** Rating is the only thing that
+creates one. The events survive in `.pending/`, but the transcript, and with it
+the token counts and cost, is gone once Claude Code prunes `~/.claude/projects`.
+
+**Then close the session.** `/fn-eval` packs the archive from inside the turn it
+runs in, and Claude Code writes the session's cost only as the session ends — in
+a `cost-state` record that is the transcript's last line. So the `SessionEnd`
+hook repacks a session that has already been rated. Rate and never exit, and the
+archive keeps everything but the cost.
 
 The vocabulary is fixed so scores stay comparable across sessions and users;
 anything it cannot express goes in `--comment`. Widen it in
@@ -97,6 +102,12 @@ A zip cannot be appended to and each hook is its own process, so events
 accumulate in `.pending/` and the archive is rewritten whole each time. It is
 staged and renamed into place, so an interrupted run never damages the previous
 archive. A session with no transcript yet is archived with `events.jsonl` alone.
+
+Rewritten twice, in the ordinary case: once by `/fn-eval`, and once by the
+`SessionEnd` hook, which repacks a session that carries a rating. That second
+pass is what picks up the tail of the transcript — the rating turn itself, and
+the `cost-state` line. A session that was never rated is not packed at either
+point.
 
 ## Event log format
 
@@ -189,10 +200,12 @@ Cumulative, in `cost-state`:
    "cacheCreationInputTokens":126957,"webSearchRequests":0,"costUSD":5.5077257500000005}}}
 ```
 
-`cost-state` is written at checkpoints, not only at the end — in one 539-line
-transcript both records sat at lines 249 and 251, so the last is not necessarily
-final, and a short session may contain none at all. Take the largest, and treat
-its absence as *unknown* rather than as zero.
+`cost-state` is written as a session ends, and is the transcript's last line
+when it appears at all. A session resumed after that goes on appending, which is
+why one 1716-line transcript carries its two records at lines 249 and 251 — so
+take the largest rather than the last, and treat absence as *unknown*, never as
+zero. Nothing writes cost mid-session: an archive packed by `/fn-eval` alone
+never holds one, which is what the `SessionEnd` repack is for.
 
 Tokens come from `message.usage`, but **sum one usage per `message.id`, not one
 per `assistant` line.** A message is written out one line per content block —
