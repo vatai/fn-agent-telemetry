@@ -24,6 +24,12 @@ when no such record was archived.
 A stored `scale` is the authority for reading its own `value`. Archives predate
 changes to the feedback vocabulary, so an old row is read with the scale it was
 written against, and flagged when that scale is missing keys the current one has.
+
+One asymmetry is not corrected here, only named: `/fn-eval` packs the archive in
+the middle of the turn it runs in. opencode repacks at the end of every turn and
+so captures that turn; Claude Code does not, so its archives are short the
+rating turn's `turn_end`, its assistant messages and the seconds it took. Turn
+counts, and anything per turn, are not comparable between the two agents.
 """
 
 import collections
@@ -123,15 +129,27 @@ def _activity(events):
         "prompts": counts["user_prompt"],
         "turns": counts["turn_end"],
         "tools": counts["tool_post"],
-        # A tool_pre with no tool_post is a call denied, cancelled, or cut off
-        # by the session ending. The transcript records no such attempt.
-        "tools_unfinished": counts["tool_pre"] - counts["tool_post"],
+        "tools_unfinished": counts["tool_pre"] - counts["tool_post"] - _packing_call(events),
         "permission_asks": counts["permission_ask"],
         "notifications": counts["notification"],
         "compacts": counts["compact"],
         "subagents": counts["subagent_end"],
         "top_tools": _top_tools(events),
     }
+
+
+def _packing_call(events):
+    """1 when the archive was packed inside the `/fn-eval` tool call's own window.
+
+    The rating is written from a tool call whose `tool_post` is recorded only
+    once that call returns -- after the zip has been closed. An agent that
+    repacks at the end of the turn picks the line up; one that packs and stops
+    never can, so without this every archive of its would report a phantom
+    unfinished call, and a real denied one would be invisible among them.
+    """
+    calls = [event for event in events if event.get("event_type") in ("tool_pre", "tool_post")]
+    rated = any(event.get("event_type") == "feedback" for event in events)
+    return 1 if rated and calls and calls[-1].get("event_type") == "tool_pre" else 0
 
 
 def _top_tools(events, limit=3):
@@ -187,7 +205,12 @@ def _opencode_usage(transcript):
     replies = [info for info in messages if info.get("role") == "assistant"]
     cost = sum(info.get("cost") or 0 for info in replies) if replies else None
     tokens = (_opencode_tokens(info.get("tokens") or {}) for info in replies)
-    return _totals(tokens, cost, [info.get("modelID") for info in replies])
+    return _totals(tokens, cost, [_opencode_model(info) for info in replies])
+
+
+def _opencode_model(info):
+    """Provider and model together: the same model id can come from either."""
+    return "/".join(part for part in (info.get("providerID"), info.get("modelID")) if part)
 
 
 def _opencode_tokens(tokens):

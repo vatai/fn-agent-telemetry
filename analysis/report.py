@@ -10,7 +10,9 @@ cross-session aggregate is a group-by over the export rather than a mode here.
 
 A value marked `!` was rated against a scale that predates the current
 vocabulary and cannot be compared with today's, and a blank cost means the agent
-archived none -- neither is a zero. See `archives.py` for why.
+archived none -- neither is a zero. `billed in` counts cache reads and writes as
+charged, so it is input volume paid for, not conversation size. See
+`archives.py` for these and for why turn counts do not compare across agents.
 """
 
 import argparse
@@ -28,7 +30,7 @@ COLUMNS = (
     ("prompts", lambda row: str(row["prompts"])),
     ("turns", lambda row: str(row["turns"])),
     ("tools", lambda row: _tools(row)),
-    ("in", lambda row: _tokens(row["input"] + row["cache_read"] + row["cache_write"])),
+    ("billed in", lambda row: _tokens(row["input"] + row["cache_read"] + row["cache_write"])),
     ("out", lambda row: _tokens(row["output"])),
     ("cost", lambda row: _cost(row["cost_usd"])),
     ("rating", lambda row: _rating(row)),
