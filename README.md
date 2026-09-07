@@ -9,14 +9,24 @@ evaluate agents. The command invocation asks you 3 questions:
 - **Q2**: FOM as a numerical value;
 - **Q3**: Overall satisfaction with the agent/LLM (1-5 scores);
 
-Then it generates a zip file in `$HOME/agent-telemetry` which should be uploaded
-to the URL which is provided separately.
+Then it generates one JSON file in `$HOME/agent-telemetry` which should be
+uploaded to the URL which is provided separately. It is plain text — read it
+before you send it.
 
-The `/fn-eval` command collects the agent-user interaction (and almost the
-complete log) from the beginning of the session until the `/fn-eval` is invoked.
+It holds five things and nothing else:
+
+- the **skills** that were available to the session, and the text defining them;
+- the **tokens** used, per reply;
+- what the session **cost**;
+- the **`AGENTS.md` and `CLAUDE.md`** files the agent was working under, in full;
+- your **three answers** above.
+
+It does not contain your prompts, the agent's replies, what any tool was given
+or returned, which tools ran at all, or any copy of the conversation.
+
 Typically you'd invoke `/fn-eval` when finished with the session (and for
-technical reasons, you actually need to exit `claude` to create a complete zip
-file).
+technical reasons, you actually need to exit `claude` for the cost to be
+recorded).
 
 ## Install
 

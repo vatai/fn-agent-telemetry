@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Report on the collected telemetry archives.
+"""Report on the collected telemetry.
 
     python3 analysis/report.py                  # a table to read
     python3 analysis/report.py --format csv     # every field, for analysis elsewhere
@@ -8,15 +8,20 @@
 The table is a readable subset; `csv` and `json` carry the whole row, so a
 cross-session aggregate is a group-by over the export rather than a mode here.
 
+`skills` is how many the session had available, with the number whose defining
+text was found on disk in brackets -- most skills are built into the CLI and have
+only their one-line description. `ctx` is how many `AGENTS.md`/`CLAUDE.md` files
+were in effect.
+
 The `fom` column is that session's own figure of merit and unit, which do not
 compare across sessions; `sat` is the 1-5 normalisation of it that does. A value
-marked `!` was rated against a scale that predates the current vocabulary and
-cannot be compared with today's, and a blank cost means the agent archived none
--- neither is a zero. Tokens are split the way they are charged:
-`in`, `cache r`, `cache w` and `out` add up to `total`, while `think` is the
-thinking part of `out` and so is already inside it. Cache reads are counted
-every turn they happen on, so `total` is tokens paid for, not conversation size.
-See `archives.py` for these and for why turn counts do not compare across agents.
+marked `!` was rated against a scale that predates measured figures. A blank cost
+means none was recorded, which is not a zero. Tokens are split the way they are
+charged: `in`, `cache r`, `cache w` and `out` add up to `total`, while `think` is
+the thinking part of `out` and so is already inside it.
+
+A row from a `.zip` predates skill and context collection, so those columns are
+blank for it; `archives.py` explains why those archives are still read.
 """
 
 import argparse
@@ -31,9 +36,9 @@ COLUMNS = (
     ("agent", lambda row: row["agent"] or "?"),
     ("session", lambda row: (row["session_id"] or "?")[:12]),
     ("secs", lambda row: _number(row["duration_s"])),
-    ("prompts", lambda row: str(row["prompts"])),
-    ("turns", lambda row: str(row["turns"])),
-    ("tools", lambda row: _tools(row)),
+    ("msgs", lambda row: str(row["messages"])),
+    ("skills", lambda row: _skills(row)),
+    ("ctx", lambda row: _number(row["context_files"])),
     ("in", lambda row: _tokens(row["input"])),
     ("cache r", lambda row: _tokens(row["cache_read"])),
     ("cache w", lambda row: _tokens(row["cache_write"])),
@@ -51,7 +56,7 @@ def main(argv=None):
     args = _parse_args(argv)
     rows = archives.sessions(args.dir)
     if not rows:
-        print(f"no archives in {args.dir or archives.telemetry_dir()}", file=sys.stderr)
+        print(f"nothing collected in {args.dir or archives.telemetry_dir()}", file=sys.stderr)
         return 1
     _writers()[args.format](rows)
     return 0
@@ -93,9 +98,11 @@ def _summary(rows):
     )
 
 
-def _tools(row):
-    unfinished = row["tools_unfinished"]
-    return f"{row['tools']}+{unfinished}?" if unfinished else str(row["tools"])
+def _skills(row):
+    """Available, and how many had a defining file rather than a description."""
+    if row["skills"] is None:
+        return ""
+    return f"{row['skills']} ({row['skills_with_text']})"
 
 
 def _tokens(count):
@@ -120,7 +127,7 @@ def _fom(row):
 
 def _parse_args(argv):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--dir", default=None, help="archive directory [$AGENT_TELEMETRY_DIR]")
+    parser.add_argument("--dir", default=None, help="telemetry directory [$AGENT_TELEMETRY_DIR]")
     parser.add_argument("--format", default="table", choices=sorted(_writers()))
     return parser.parse_args(argv)
 

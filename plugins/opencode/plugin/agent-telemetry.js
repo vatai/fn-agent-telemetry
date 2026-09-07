@@ -1,18 +1,19 @@
 /**
- * opencode telemetry: every hook worth recording, piped to the shared package.
+ * opencode telemetry: three lifecycle events and the session's token usage.
  *
- * The payloads go out as JSON on the stdin of the same Python that backs the
- * Claude Code plugin, where the opencode adapter maps them onto the shared
- * taxonomy. Nothing is awaited on the hot path and every failure is swallowed,
- * so telemetry can never interrupt or slow an opencode session.
+ * Only what is collected is sent. Prompts, tool calls and tool results are not
+ * hooked at all -- not filtered downstream, simply never asked for -- so this
+ * plugin spawns nothing on the hot path of a turn. Nothing is awaited and every
+ * failure is swallowed, so telemetry can never interrupt or slow a session.
  *
- * Three things have no Claude Code equivalent and are solved here. opencode has
- * no transcript file to point at -- its messages live in a database -- so at
- * the end of every turn they are read back over the SDK and dumped beside the
- * event log. A command has no ${CLAUDE_PLUGIN_ROOT} to resolve the feedback
- * executable with, so `shell.env` hands the shell tool one. And an installed
- * copy of this plugin has nothing in ~/.config/opencode/command, so /fn-eval is
- * registered from the `config` hook rather than left as a file to link.
+ * Three things have no Claude Code equivalent and are solved here. opencode
+ * keeps its messages in a database rather than a record on disk, so at the end
+ * of every turn they are read back over the SDK and handed to the shared Python
+ * for their token counts and cost; the messages themselves are never stored. A
+ * command has no ${CLAUDE_PLUGIN_ROOT} to resolve the feedback executable with,
+ * so `shell.env` hands the shell tool one. And an installed copy of this plugin
+ * has nothing in ~/.config/opencode/command, so /fn-eval is registered from the
+ * `config` hook rather than left as a file to link.
  */
 import { readFileSync } from "node:fs"
 import { spawn } from "node:child_process"
@@ -29,13 +30,9 @@ const FN_EVAL = resolve(HERE, "../command/fn-eval.md")
 // from wherever this file sits -- a checkout, or an installed package.
 const PACKAGE_ROOT = resolve(HERE, "../../claude-code")
 
-const RECORDED_EVENTS = new Set([
-  "session.created",
-  "session.deleted",
-  "session.idle",
-  "session.compacted",
-  "session.error",
-])
+// Lifecycle only. A compaction or an error says something about a session, but
+// neither is one of the five things collected, so neither is recorded.
+const RECORDED_EVENTS = new Set(["session.created", "session.deleted", "session.idle"])
 
 const FRONTMATTER = /^---\n([\s\S]*?)\n---\n/
 
@@ -72,10 +69,12 @@ const commandFrom = (path) => {
 export const AgentTelemetry = async ({ client, directory }) => {
   const record = (hook, payload) => feed("hook", [AGENT], { hook, directory, ...payload })
 
-  const dumpTranscript = async (sessionID) => {
+  // The messages are read for their token counts and cost and are not kept;
+  // `agent_telemetry.messages` takes the numbers and discards the rest.
+  const reportUsage = async (sessionID) => {
     if (!sessionID) return
     const messages = await client.session.messages({ path: { id: sessionID } })
-    feed("transcript", ["--session", sessionID], messages.data ?? [])
+    feed("messages", ["--session", sessionID], messages.data ?? [])
   }
 
   return {
@@ -88,24 +87,8 @@ export const AgentTelemetry = async ({ client, directory }) => {
     event: quietly(async ({ event }) => {
       if (!RECORDED_EVENTS.has(event.type)) return
       record(event.type, { sessionID: sessionOf(event), ...event.properties })
-      if (event.type === "session.idle") await dumpTranscript(sessionOf(event))
+      if (event.type === "session.idle") await reportUsage(sessionOf(event))
     }),
-
-    "chat.message": quietly(async (input, output) =>
-      record("chat.message", { sessionID: input.sessionID, ...output }),
-    ),
-
-    "tool.execute.before": quietly(async (input, output) =>
-      record("tool.execute.before", { ...input, args: output.args }),
-    ),
-
-    "tool.execute.after": quietly(async (input, output) =>
-      record("tool.execute.after", { ...input, result: output }),
-    ),
-
-    "permission.ask": quietly(async (input, output) =>
-      record("permission.ask", { sessionID: input.sessionID, permission: input, status: output.status }),
-    ),
 
     "shell.env": quietly(async (_input, output) => {
       output.env.AGENT_TELEMETRY_BIN = BIN

@@ -4,8 +4,7 @@ Usage data says what a session did; it cannot say whether it was any good. This
 module records the missing half: what the user was judging (`subject`), the
 figure of merit they judged it on (`fom`), the number they observed (`value`),
 and one normalised score for the session overall (`satisfaction`). The answer is
-appended to the session's own event log, so it carries the same `session_id` as
-every other event and no join is ever needed.
+written into the session's own document, so it needs no join to anything.
 
 The figure of merit is free text, because a useful one is domain-specific:
 GFLOP/s for a kernel, samples/s for a training loop, x for an optimisation.
@@ -21,16 +20,16 @@ rises, and no lookup can tell which a free-form figure is -- so it is asked for
 rather than inferred.
 
 Unlike the hooks, this runs from a slash command the user typed, so a failure
-here is worth printing rather than swallowing. The answer is written before the
-archive is packed: a snapshot that fails should cost an archive, never a reply
-a human just spent three turns giving.
+here is worth printing rather than swallowing. The answer is stored before the
+document is written out: a failure to write should cost an output file, never a
+reply a human just spent three turns giving.
 """
 
 import argparse
 import os
 import sys
 
-from . import adapters, events, paths, snapshot, writer
+from . import adapters, document, session
 
 RATING = {"min": 1, "max": 5, "integer": True, "unit": None, "better": "higher"}
 
@@ -49,26 +48,15 @@ SUGGESTED_FOMS = (
     ("plot_quality", "1-5", "plots generated for a paper"),
 )
 
-EVENT_TYPE = "feedback"
-NATIVE_EVENT = "SlashCommand"
-
 
 def main(argv=None):
     """Entry point for the manual `/fn-eval` command. Prints one status line."""
     args = _parse_args(sys.argv[1:] if argv is None else argv)
-    session_id, transcript = snapshot.resolve_session(os.getcwd(), args.agent)
-    recorded = writer.append_event(_build_event(args, session_id, transcript))
-    archive = snapshot.snapshot(session_id, transcript) if session_id else None
-    print(_status(recorded, archive))
+    session_id = session.resolve(os.getcwd(), args.agent)
+    recorded = _record(session_id, args)
+    output = session.finalize(session_id, args.agent) if recorded else None
+    print(_status(recorded, output))
     return 0
-
-
-def rated(session_id):
-    """Whether `/fn-eval` has already recorded an answer for this session."""
-    log = paths.log_path(session_id)
-    if not log or not os.path.isfile(log):
-        return False
-    return any(event.get("event_type") == EVENT_TYPE for event in events.read_log(log))
 
 
 def fom_scale(unit):
@@ -77,7 +65,7 @@ def fom_scale(unit):
     Open-ended and directionless, since neither bound nor direction can be
     looked up for a name nobody declared in advance. `unit` stays a key even
     when there is no unit to name, because a scale carrying no `unit` key at all
-    is how the reader recognises a row written before measured figures existed.
+    is how a reader recognises an answer from before measured figures existed.
     """
     return {"min": 0, "max": None, "integer": False, "unit": unit, "better": None}
 
@@ -90,13 +78,14 @@ def describe_scale(scale):
     return f"{bound}{unit}{better}"
 
 
-def _build_event(args, session_id, transcript):
-    normalized = {
-        "event_type": EVENT_TYPE,
-        "native_event": NATIVE_EVENT,
-        "session_id": session_id,
-        "cwd": os.getcwd(),
-        "transcript_path": transcript,
+def _record(session_id, args):
+    """Store the answer in the session's document. Returns True on success."""
+    if not session_id:
+        return False
+    doc = document.load(session_id)
+    if doc is None:
+        return False
+    doc["feedback"] = {
         "subject": args.subject,
         "fom": _fom_key(args.fom),
         "scale": fom_scale(args.unit),
@@ -104,8 +93,9 @@ def _build_event(args, session_id, transcript):
         "satisfaction": int(args.satisfaction),
         "satisfaction_scale": dict(RATING),
         "comment": args.comment,
+        "recorded": document.now_iso(),
     }
-    return events.build_event(args.agent, normalized, vars(args))
+    return document.save(session_id, doc)
 
 
 def _fom_key(name):
@@ -118,18 +108,18 @@ def _plain(value):
     return int(value) if float(value).is_integer() else value
 
 
-def _status(recorded, archive):
+def _status(recorded, output):
     if not recorded:
-        return "feedback not recorded"
-    if archive:
-        return f"feedback recorded -> {archive}"
-    return "feedback recorded, pending: no session found to archive it with"
+        return "feedback not recorded: no session found to record it against"
+    if output:
+        return f"feedback recorded -> {output}"
+    return "feedback recorded, pending: nothing could be written out yet"
 
 
 def _parse_args(argv):
     parser = argparse.ArgumentParser(prog="agent-telemetry-feedback")
     # Supplied by each plugin's own wrapper, never typed by whoever runs the
-    # command: it selects which agent's events this session is looked up among.
+    # command: it selects which agent's sessions this one is looked up among.
     parser.add_argument("--agent", required=True, choices=adapters.known_agents())
     parser.add_argument("--subject", required=True, help="what was being judged")
     parser.add_argument("--fom", required=True, help=_fom_help())

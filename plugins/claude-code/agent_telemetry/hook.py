@@ -1,21 +1,21 @@
-"""Entry point for the shared agent telemetry hook.
+"""Entry point for the shared telemetry hook.
 
 Usage: agent-telemetry-hook <agent>
 
-Reads a single native hook payload as JSON on stdin, normalizes it via the
-matching adapter, and appends an enriched JSONL event. The process always exits
-0 and never writes to stdout so that a telemetry failure can never block or
-alter an agent session.
+Reads one native hook payload as JSON on stdin and notes the session's
+existence, nothing more. A hook collects no conversation: the payload is used
+for its session id, working directory and record path, and is then discarded
+rather than stored. The process always exits 0 and never writes to stdout, so a
+telemetry failure can neither block nor alter an agent session.
 
-One hook does more than write its event: a session that ends after being rated
-is repacked, since the agent finishes writing the transcript -- cost included --
-only once the session is over.
+One hook does more than that. A session ending after it was rated is finalized,
+because the agent writes the session's cost only once the session is over.
 """
 
 import json
 import sys
 
-from . import adapters, events, feedback, snapshot, writer
+from . import adapters, session
 
 
 def main(argv=None):
@@ -35,38 +35,23 @@ def _run(argv):
     payload = _read_payload()
     if payload is None:
         return
-    event = events.build_event(agent, adapter.normalize(payload), payload)
-    writer.append_event(event)
-    _repack_ended_session(adapter, event)
-
-
-def _repack_ended_session(adapter, event):
-    """Refresh a rated session's archive once the session is over.
-
-    Claude Code writes its `cost-state` record only as a session ends, so the
-    archive `/fn-eval` packed mid-session can never hold the session's cost.
-    Rating is still what creates an archive; this only keeps one from going
-    stale, the same way the opencode plugin's end-of-turn dump does.
-
-    Whether an agent's `session_end` is worth repacking on is the adapter's to
-    say: opencode's is a session being *deleted*, and repacking one the user has
-    just discarded would be perverse.
-    """
-    session_id = event.get("session_id")
-    if not adapter.REPACK_AT_SESSION_END or event.get("event_type") != "session_end":
-        return
-    if session_id and feedback.rated(session_id):
-        snapshot.snapshot(session_id, event.get("transcript_path"))
+    session.observe(agent, adapter.normalize(payload), adapter.FINALIZE_AT_SESSION_END)
 
 
 def _read_payload():
+    """The hook's own input, or None when there is nothing usable.
+
+    Unparseable stdin is dropped rather than kept: it can hold anything at all,
+    and with no event log there is nowhere it belongs.
+    """
     raw = sys.stdin.read()
     if not raw.strip():
         return None
     try:
-        return json.loads(raw)
+        payload = json.loads(raw)
     except json.JSONDecodeError:
-        return {"_unparsed_stdin": raw}
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 if __name__ == "__main__":

@@ -1,19 +1,14 @@
-"""Filesystem layout for telemetry artifacts.
+"""Filesystem layout for telemetry output.
 
-One archive per session is the output, holding both of that session's files:
+One JSON document per rated session is the whole output:
 
-    <AGENT_TELEMETRY_DIR>/<date>-<time>-<session_id>.zip
-        events.jsonl        one JSON object per hook event
-        transcript.jsonl    copy of the session's own conversation record
+    <AGENT_TELEMETRY_DIR>/<date>-<time>-<session_id>.json
 
-The archive is named for when the session started, not for when it was packed,
-so a directory listing sorts chronologically and repacking a session replaces
-its archive instead of adding another.
-
-Hook events arrive one process at a time and a zip cannot be appended to, so the
-event log accumulates in a working file under `.pending/` and is folded into the
-archive at every snapshot. An agent that keeps no transcript file of its own
-dumps one next to that log, which is why the two are told apart by name here.
+named for when the session started, so a listing sorts chronologically and
+re-rating a session overwrites its own document instead of adding another. The
+document is assembled over the life of a session -- context at the start, usage
+and cost at the end, the rating in between -- so a partial one accumulates at
+`.pending/<session_id>.json` in the same shape until the session is rated.
 
 `AGENT_TELEMETRY_DIR` is the only knob; everything else is derived from it.
 """
@@ -26,12 +21,8 @@ TELEMETRY_DIR_ENV = "AGENT_TELEMETRY_DIR"
 
 DEFAULT_DIR_NAME = "agent-telemetry"
 PENDING_DIR_NAME = ".pending"
-LOG_SUFFIX = ".jsonl"
-TRANSCRIPT_SUFFIX = ".transcript.jsonl"
-ARCHIVE_SUFFIX = ".zip"
-ARCHIVE_STAMP_FORMAT = "%Y%m%d-%H%M%S"
-EVENTS_MEMBER = "events.jsonl"
-TRANSCRIPT_MEMBER = "transcript.jsonl"
+DOCUMENT_SUFFIX = ".json"
+STAMP_FORMAT = "%Y%m%d-%H%M%S"
 UNKNOWN_SESSION = "unknown-session"
 
 _UNSAFE_IN_NAME = re.compile(r"[^A-Za-z0-9._-]")
@@ -53,43 +44,29 @@ def pending_dir():
     return os.path.join(directory, PENDING_DIR_NAME) if directory else None
 
 
-def log_path(session_id):
-    """Working event log for a session, folded into the archive at each snapshot."""
-    return _pending_path(session_id, LOG_SUFFIX)
+def pending_path(session_id):
+    """The document being assembled for a session that is not yet rated."""
+    directory = pending_dir()
+    if not directory:
+        return None
+    return os.path.join(directory, _session_name(session_id) + DOCUMENT_SUFFIX)
 
 
-def transcript_path(session_id):
-    """Where an agent that keeps no transcript file of its own dumps one.
-
-    Claude Code names its transcript in every hook payload and never needs this;
-    opencode keeps its messages in a database, so its plugin dumps them here at
-    the end of each turn and its adapter reports this path in place of a native
-    one.
-    """
-    return _pending_path(session_id, TRANSCRIPT_SUFFIX)
-
-
-def is_log(name):
-    """Event logs and dumped transcripts share `.jsonl` and share a directory."""
-    return name.endswith(LOG_SUFFIX) and not name.endswith(TRANSCRIPT_SUFFIX)
-
-
-def archive_path(session_id, started_at=None):
-    """`<date>-<time>-<session_id>.zip`, stamped with when the session started."""
+def output_path(session_id, started_at=None):
+    """`<date>-<time>-<session_id>.json`, stamped with when the session started."""
     directory = telemetry_dir()
     if not directory:
         return None
-    name = _stamp(started_at) + "-" + _session_name(session_id) + ARCHIVE_SUFFIX
+    name = _stamp(started_at) + "-" + _session_name(session_id) + DOCUMENT_SUFFIX
     return os.path.join(directory, name)
 
 
-def _pending_path(session_id, suffix):
-    directory = pending_dir()
-    return os.path.join(directory, _session_name(session_id) + suffix) if directory else None
+def is_pending_document(name):
+    return name.endswith(DOCUMENT_SUFFIX)
 
 
 def _stamp(started_at):
-    return (started_at or _dt.datetime.now()).strftime(ARCHIVE_STAMP_FORMAT)
+    return (started_at or _dt.datetime.now()).strftime(STAMP_FORMAT)
 
 
 def _session_name(session_id):

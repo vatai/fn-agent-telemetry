@@ -2,15 +2,15 @@
 
 ## Rating a session: `/fn-eval`
 
-Hooks record events from then on, with nothing to run. To archive a session, run
-this once before you leave it:
+Hooks note that a session exists, with nothing to run. To produce its result,
+run this once before you leave it:
 
 ```
 /fn-eval
 ```
 
 The agent proposes what the session should be judged on, then asks three
-questions, one at a time, and packs the archive.
+questions, one at a time, and writes the document.
 
 | Question | Asks for                                    | You answer             |
 | -------- | ------------------------------------------- | ---------------------- |
@@ -22,9 +22,9 @@ Q1 is free text. A useful figure of merit is domain-specific — GFLOP/s for a
 kernel, samples/s for a training loop, × for an optimisation — so the eight the
 command offers are suggestions, not a vocabulary, and a name typed instead of
 picked is stored as given. The unit comes with the number rather than from a
-lookup, and the figure's scale is written onto the event as open-ended and
-without a direction: `loss` falls where `accuracy` rises, and nothing can tell
-which a name nobody declared in advance is.
+lookup, and the figure's scale is written down as open-ended and without a
+direction: `loss` falls where `accuracy` rises, and nothing can tell which a
+name nobody declared in advance is.
 
 Which is why Q3 exists. Free text alone would leave N sessions with N
 incomparable metrics, so Q3 asks for the same figure normalised onto one 1–5
@@ -45,31 +45,50 @@ The suggestion list is written out in four places, because a markdown prompt
 cannot import Python and each agent reads its own prompt. Add a figure to all of
 them, or the agents offer different things:
 
-| File                                              | What                                                                                                                    |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| File                                              | What                                                                                                                   |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `plugins/claude-code/agent_telemetry/feedback.py` | `SUGGESTED_FOMS` — the canonical list: name, unit, what it suits. Only `--help` reads it; nothing validates against it. |
 | `plugins/claude-code/commands/fn-eval.md`         | The step 2 table, offered as `AskUserQuestion` options.                                                                 |
-| `plugins/opencode/command/fn-eval.md`             | The step 2 table, offered in prose.                                                                                     |
+| `plugins/opencode/command/fn-eval.md`             | The step 2 table, offered in prose.                                                                                    |
 | `README.md`, `## FOM: Figure of merit`            | The user-facing prose version, and where the list came from.                                                            |
 
 Nothing enforces agreement between them, since `--fom` accepts any name — a
 list that has drifted produces valid but unevenly-prompted data, not an error.
 
-**Skip `/fn-eval` and you get no archive.** Rating is the only thing that
-creates one. The events survive in `.pending/`, but under Claude Code the
-transcript — and with it the token counts and cost — is gone once Claude Code
-prunes `~/.claude/projects`.
+**Skip `/fn-eval` and you get nothing.** Rating is the only thing that produces
+a result. The document stays in `.pending/`, and under Claude Code the token
+counts and cost are lost once it prunes `~/.claude/projects`, since that record
+is where they live.
 
-**Then close the session — Claude Code only.** `/fn-eval` packs the archive from
-inside the turn it runs in, and Claude Code writes the session's cost only as
-the session ends, in a `cost-state` record that is the transcript's last line.
-So the `SessionEnd` hook repacks a session that has already been rated. Rate and
-never exit, and the archive keeps everything but the cost. opencode has no
-equivalent gap: it repacks a rated session at the end of every turn.
+**Then close the session — Claude Code only.** `/fn-eval` writes the document
+from inside the turn it runs in, and Claude Code records the session's cost only
+as the session ends. So the `SessionEnd` hook writes a rated session's document
+again. Rate and never exit, and the document has everything but the cost.
+opencode has no equivalent gap: it refreshes usage at the end of every turn.
 
 Q3's 1–5 scale is what keeps scores comparable across sessions and users, so it
 is fixed; Q1 is deliberately not. Anything the three numbers cannot express goes
 in `--comment`.
+
+## What is collected
+
+Five things, and nothing else:
+
+| | |
+| - | - |
+| **skills** | every skill the session had available, and the text defining it |
+| **usage** | tokens per assistant message |
+| **cost** | what the session cost |
+| **context** | the `AGENTS.md` and `CLAUDE.md` files in effect, whole |
+| **rating** | your three answers |
+
+No prompts, no assistant output, no tool inputs or results, no tool activity, no
+native hook payloads, and no copy of the conversation. A hook's payload is read
+for the session id, the working directory and where the agent keeps its own
+record, and is then discarded — it is never stored. That matters more than it
+sounds: a `Stop` payload carries the assistant's entire reply in
+`last_assistant_message`, so keeping payloads wholesale is how conversation gets
+collected by accident.
 
 ## Options
 
@@ -79,15 +98,10 @@ Both plugins need `python3` on `PATH`, and both read the same one setting:
 export AGENT_TELEMETRY_DIR=~/somewhere-else          # optional; defaults to ~/agent-telemetry
 ```
 
-Append-only telemetry capture for local Claude Code and opencode CLI sessions.
-One zip archive per rated session, holding that session's event log, its
-transcript, and the user's own rating of how the session went. Best-effort — it
-never interrupts a session.
-
-One plugin per agent, one archive format for both. Everything below the adapter
-is shared — the same Python package, the same event taxonomy, the same
+One plugin per agent, one document format for both. Everything below the adapter
+is shared — the same Python package, the same document, the same
 `AGENT_TELEMETRY_DIR` — so both agents' sessions land side by side in one
-directory, and the `agent` field on every event says which one produced it.
+directory, and `session.agent` says which one produced it.
 
 ## Uploading
 
@@ -95,16 +109,17 @@ Each run of `/fn-eval`, under either agent, leaves one file to send, in
 `~/agent-telemetry` (or `$AGENT_TELEMETRY_DIR`):
 
 ```
-20260904-164832-610153d8-b1f9-48dc-b2e6-43b8febca643.zip
+20260904-164832-610153d8-b1f9-48dc-b2e6-43b8febca643.json
 └──────┬──────┘ └────────────────┬───────────────────┘
   when the session               the agent's
   started, local time            session id
 ```
 
-One per session, `<date>-<time>-<session_id>.zip` — `YYYYMMDD-HHMMSS`, so a
+One per session, `<date>-<time>-<session_id>.json` — `YYYYMMDD-HHMMSS`, so a
 listing is already in chronological order and the name is unique across users
 and machines. Re-running `/fn-eval` overwrites the session's own file rather
-than adding another, so the whole directory is always the complete set.
+than adding another, so the whole directory is always the complete set. It is
+plain JSON: read it before you send it.
 
 _TODO: where to send them._
 
@@ -112,206 +127,123 @@ _TODO: where to send them._
 
 ```
 ~/agent-telemetry/
-├── 20260904-164832-<session_id>.zip    # <date>-<time>-<session_id>
-│   ├── events.jsonl                   # events, plus the user's rating
-│   └── transcript.jsonl               # the session's messages
-└── .pending/<session_id>.jsonl        # live event log, folded in at each snapshot
+├── 20260904-164832-<session_id>.json   # <date>-<time>-<session_id>, the result
+└── .pending/<session_id>.json          # the same document, still being assembled
 ```
 
 `AGENT_TELEMETRY_DIR` is the only setting. Hooks no-op silently only when no
 home directory can be resolved.
 
-One archive per session, named for when the session _started_, in local time —
-so listings sort chronologically and re-running `/fn-eval` overwrites the
-archive instead of adding a near-identical one. Timestamps _inside_ are UTC.
+The document is named for when the session _started_, in local time — so
+listings sort chronologically and re-running `/fn-eval` overwrites the result
+instead of adding a near-identical one. Timestamps _inside_ are UTC.
 
-A zip cannot be appended to and events arrive one at a time, so they accumulate
-in `.pending/` and the archive is rewritten whole each time. It is staged and
-renamed into place, so an interrupted run never damages the previous archive. A
-session with no transcript yet is archived with `events.jsonl` alone.
+A session's document is assembled over its life: the instructions it runs under
+are snapshotted at `SessionStart`, the rating arrives from `/fn-eval`, and usage
+and cost are read at the end. So a partial document accumulates in `.pending/`
+in the same shape and is written out to the result name once rated. Nothing is
+appended to — there is no event stream — so each change rewrites the document
+whole, staged and renamed into place, and an interrupted write can never replace
+a good document with half of one.
 
-Rewritten at least twice, in the ordinary case: once by `/fn-eval`, and once
-after it. For Claude Code that second pass is the `SessionEnd` hook, and it is
-what picks up the tail of the transcript — the rating turn itself, and the
-`cost-state` line. For opencode it is the end of every subsequent turn. Either
-way, a session that was never rated is not packed at any point.
+Written at least twice in the ordinary case: once by `/fn-eval`, and once after
+it. For Claude Code that second pass is the `SessionEnd` hook, and it is what
+picks up the cost. For opencode it is the end of every subsequent turn. Either
+way, a session that was never rated is not written out at any point.
 
-## Event log format
+## Document format
 
-`events.jsonl` is append-only, one JSON object per line, retained indefinitely.
-Every object has:
-
-| Field             | Description                                                                                               |
-| ----------------- | --------------------------------------------------------------------------------------------------------- |
-| `schema_version`  | Event schema version (currently `1`).                                                                     |
-| `event_id`        | Unique UUID for this event.                                                                               |
-| `timestamp`       | ISO-8601 UTC time the event was recorded.                                                                 |
-| `agent`           | Source agent — `claude-code` or `opencode`.                                                               |
-| `host`            | `{hostname, pid, user}` of the process that emitted the event.                                            |
-| `event_type`      | Normalized type shared across agents (see below).                                                         |
-| `native_event`    | The agent's own hook or bus event name — `PreToolUse`, `tool.execute.before`.                             |
-| `session_id`      | The agent's session id.                                                                                   |
-| `cwd`             | Session working directory. No opencode payload carries one, so the plugin's `directory` stands in.        |
-| `transcript_path` | Path to the session transcript, when provided.                                                            |
-| `raw`             | The unmodified native hook payload. For opencode, the payload the plugin assembled, native fields intact. |
-
-Plus, per `event_type`. One taxonomy, two sets of native names; a `—` in an
-agent's column means that agent has no such event:
-
-| `event_type`     | Claude Code        | opencode              | Extra fields                                                                        |
-| ---------------- | ------------------ | --------------------- | ----------------------------------------------------------------------------------- |
-| `session_start`  | `SessionStart`     | `session.created`     | `source` (Claude Code)                                                              |
-| `session_end`    | `SessionEnd`       | `session.deleted`     | `reason` (Claude Code)                                                              |
-| `user_prompt`    | `UserPromptSubmit` | `chat.message`        | `prompt`                                                                            |
-| `tool_pre`       | `PreToolUse`       | `tool.execute.before` | `tool_name`, `tool_input`                                                           |
-| `tool_post`      | `PostToolUse`      | `tool.execute.after`  | `tool_name`, `tool_input`, `tool_response`                                          |
-| `turn_end`       | `Stop`             | `session.idle`        | —                                                                                   |
-| `subagent_end`   | `SubagentStop`     | —                     | —                                                                                   |
-| `notification`   | `Notification`     | `session.error`       | `message`                                                                           |
-| `compact`        | `PreCompact`       | `session.compacted`   | `trigger`, `custom_instructions` (Claude Code)                                      |
-| `permission_ask` | —                  | `permission.ask`      | `tool_name`, `message`, `status`                                                    |
-| `feedback`       | `SlashCommand`     | `SlashCommand`        | `subject`, `fom`, `scale`, `value`, `satisfaction`, `satisfaction_scale`, `comment` |
-
-`permission_ask` is opencode-only, and is kept because how often a session had
-to stop and ask is a signal nothing else carries. `subagent_end` is Claude
-Code-only — opencode subagents run as sessions of their own, with a `parentID`.
-
-Every row but `feedback` comes from a hook; `feedback` is written by `/fn-eval`.
-It shares the session's `session_id` with every other event, so usage and rating
-need no join. If stdin cannot be parsed as JSON it is kept verbatim under
-`raw._unparsed_stdin` with `event_type` `unknown`.
-
-A `turn_end` line:
+One JSON object per session:
 
 ```json
 {
-  "schema_version": 1,
-  "event_id": "a583fb72-…",
-  "timestamp": "2026-09-03T23:32:39.127497+00:00",
-  "agent": "claude-code",
-  "host": { "hostname": "niku", "pid": 8848, "user": "vatai" },
-  "event_type": "turn_end",
-  "native_event": "Stop",
-  "session_id": "610153d8-…",
-  "cwd": "/home/vatai/code/fn-agent-telemetry",
-  "transcript_path": "/home/vatai/.claude/projects/-home-vatai-code-fn-agent-telemetry/610153d8-….jsonl",
-  "raw": {
+  "schema_version": 2,
+  "session": {
     "session_id": "610153d8-…",
-    "transcript_path": "…",
-    "cwd": "…",
-    "hook_event_name": "Stop",
-    "stop_hook_active": false
-  }
+    "agent": "claude-code",
+    "cwd": "/home/vatai/code/clanker-telemetry",
+    "started": "2026-09-07T09:20:22.801751+00:00",
+    "ended": "2026-09-07T09:31:04.113402+00:00",
+    "host": { "hostname": "niku", "user": "vatai" }
+  },
+  "skills": [{ "name": "code-review", "source": "listing", "text": "Review the current diff…" }],
+  "usage": [{ "message_id": "msg_01…", "model": "claude-opus-5", "input": 2,
+              "output": 452, "reasoning": 276, "cache_read": 129339, "cache_write": 974 }],
+  "cost_usd": 4.13,
+  "context": [{ "path": "/home/vatai/code/clanker-telemetry/AGENTS.md",
+                "names": ["…/AGENTS.md", "…/CLAUDE.md"], "text": "# fn-agent-telemetry…" }],
+  "feedback": { "subject": "…", "fom": "hours_saved", "scale": {}, "value": 6,
+                "satisfaction": 5, "satisfaction_scale": {}, "comment": null,
+                "recorded": "2026-09-07T09:30:11.250566+00:00" }
 }
 ```
 
-## Transcript format
+`cost_usd` is absent or `null` when it could not be determined, which is not a
+zero. `feedback` is `null` in a pending document and always present in a result,
+rating being what produces one. A pending document also carries `_record_path`,
+which is bookkeeping — where the agent keeps its own record — and is dropped
+before anything is written out, so no result names a local file.
 
-`transcript.jsonl` holds the session's own messages in the agent's own shape,
-not this plugin's. Both shapes are undocumented upstream and do change between
-releases; the below is a guide, not a contract.
+### skills
 
-### Claude Code transcripts
+`source` is the file the text came from, or the string `listing` when there was
+no file and the text is the one-line description instead. Expect mostly
+`listing`: of nineteen skills available in a measured session, **one** had a file
+on disk, and it was a plugin's `commands/fn-eval.md` rather than a `SKILL.md`.
+The other eighteen are built into the CLI and have no file to read.
 
-A verbatim copy of Claude Code's own transcript file. Observed on **v2.x,
-September 2026**.
+The available set is not on disk either. Claude Code injects it into the
+conversation as `skill_listing` records — the first carrying the full list, later
+ones carrying additions when a plugin is installed mid-session — so the names are
+folded across all of them. Verified on three sessions: nineteen each, and the
+fold catches the one where a plugin arrived mid-way (18 + 1). opencode publishes
+no such listing, so its `skills` is empty.
 
-One JSON object per line, discriminated by `type`. Conversation records
-(`assistant`, `user`, `system`, `attachment`) share an envelope of `uuid`,
-`parentUuid`, `sessionId`, `timestamp`, `cwd`, `gitBranch`, `version`,
-`isSidechain` and `userType`; session-state records carry only `sessionId`.
+### context
 
-| `type`                                                                                | Holds                                                                             |
-| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `assistant`                                                                           | `message` with `model`, `usage`, `stop_reason`, and `requestId`                   |
-| `user`                                                                                | `message`; tool results also carry `toolUseResult`                                |
-| `attachment`                                                                          | Injected context — `total_tokens_reminder`, `edited_text_file`, `skill_listing` … |
-| `system`                                                                              | `subtype`: `turn_duration`, `stop_hook_summary`, `away_summary`                   |
-| `cost-state`                                                                          | `totalCostUSD`, `modelUsage` per model, `totalDuration`, `totalLinesAdded`        |
-| `file-history-snapshot`                                                               | `snapshot` of files touched, keyed by `messageId`                                 |
-| `queue-operation`, `mode`, `permission-mode`, `last-prompt`, `ai-title`, `atis-latch` | UI and session state                                                              |
+`AGENTS.md` and `CLAUDE.md` are collected whole, deliberately: they are what the
+agent was told to do. Taken from the working directory, the directories above it,
+and `~/.claude`. The two names are frequently one file — this repo keeps
+`AGENTS.md` and symlinks `CLAUDE.md` to it — so entries are keyed by the resolved
+path and list every name that reached it, rather than storing the text twice.
 
-`message.content` is a list of parts: `text`, `thinking`, `tool_use`,
-`server_tool_use` on `assistant`; `text` and `tool_result` on `user`.
+### usage and cost
 
-#### Token usage and cost
+Neither reaches a hook payload under Claude Code. Audited across every hook type
+but `PreCompact`: the only token-shaped fields anywhere are `SessionStart`'s
+`context_tokens` and `estimated_cache_write_usd` on a resume, which are the size
+of the context and an estimate of re-priming it — not what was consumed. So the
+agent's own record is read for these, and nothing of it is kept.
 
-Neither reaches a hook payload — the transcript is the only place they appear.
+Two rules are load-bearing. Claude Code writes one record per content block and
+repeats the *whole* message's usage on each, so usage is summed **one per
+`message.id`**; a per-record sum double-counts exactly the messages that thought
+or called a tool. And cost comes from a `cost-state` record written as a session
+ends, so take the **largest, never the last** — a session resumed after one was
+written goes on to write another — with absence meaning unknown, never zero.
 
-Per assistant message, `message.usage`:
-
-```json
-{
-  "input_tokens": 2,
-  "cache_creation_input_tokens": 974,
-  "cache_read_input_tokens": 129339,
-  "output_tokens": 452,
-  "output_tokens_details": { "thinking_tokens": 276 },
-  "server_tool_use": { "web_search_requests": 0, "web_fetch_requests": 0 },
-  "service_tier": "standard"
-}
-```
-
-Cumulative, in `cost-state`:
-
-```json
-{
-  "type": "cost-state",
-  "totalCostUSD": 5.50866775,
-  "totalAPIDuration": 620673,
-  "modelUsage": {
-    "claude-opus-5": {
-      "inputTokens": 307022,
-      "outputTokens": 39713,
-      "thinkingTokens": 8802,
-      "cacheReadInputTokens": 3457724,
-      "cacheCreationInputTokens": 126957,
-      "webSearchRequests": 0,
-      "costUSD": 5.5077257500000005
-    }
-  }
-}
-```
-
-`cost-state` is written as a session ends, and is the transcript's last line
-when it appears at all. A session resumed after that goes on appending, which is
-why one 1716-line transcript carries its two records at lines 249 and 251 — so
-take the largest rather than the last, and treat absence as _unknown_, never as
-zero. Nothing writes cost mid-session: an archive packed by `/fn-eval` alone
-never holds one, which is what the `SessionEnd` repack is for.
-
-Tokens come from `message.usage`, but **sum one usage per `message.id`, not one
-per `assistant` line.** A message is written out one line per content block —
-`thinking` and `text` land on separate lines with separate `uuid`s — and each
-carries the _whole_ message's usage, not its own share. Summing per line
-double-counts exactly the messages that thought or called a tool.
-
-### opencode transcripts
-
-One opencode message per line, exactly as `GET /session/{id}/message` returned
-it: `{"info": …, "parts": […]}`. `info` carries the role, the model, and for
-assistant messages the `tokens` and `cost` of that message; `parts` carries the
-text, reasoning and tool calls. Observed on **v1.18**.
-
-Cost therefore behaves unlike Claude Code's: it is per message and present all
-along, and a `0` is a real zero rather than a missing record.
+opencode differs: its plugin receives `tokens` and `cost` per message over the
+SDK, so the numbers arrive already attributed and a `0` from a free model is a
+real zero rather than a missing record.
 
 ## How the two plugins differ
 
-Everything below the adapter is shared. These five things are not.
+Everything below the adapter is shared. These four things are not.
 
-**Hooks are a module, not a subprocess.** Claude Code declares nine hooks in
+**Hooks are a module, not a subprocess.** Claude Code declares its hooks in
 `hooks.json` and runs an executable per event. opencode loads
 `plugins/opencode/plugin/agent-telemetry.js` into its own process and calls
 exported functions, so the plugin is what spawns the shared Python — passing the
-same JSON on stdin, so the two agents' capture paths converge immediately.
+same JSON on stdin, so the two capture paths converge immediately. It hooks only
+the three lifecycle events; prompts, tool calls and tool results are not hooked
+at all, so nothing is spawned on the hot path of a turn.
 
-**There is no transcript file for opencode.** It keeps its messages in a
-database. The plugin reads them back over the SDK at the end of every turn and
-dumps them to `.pending/<session_id>.transcript.jsonl`, which is the path the
-adapter reports as `transcript_path`. That dump also repacks a session that has
-already been rated, because `/fn-eval` packs its archive in the middle of the
-turn it runs in — without the repack, the archive would miss that last turn.
+**opencode's usage arrives over the SDK.** It keeps its messages in a database
+rather than a record on disk, so the plugin reads them back at the end of every
+turn and hands them to `agent_telemetry.messages`, which takes the token counts
+and the cost and stores none of the message content. That pass also rewrites the
+document of a session already rated, because `/fn-eval` writes it in the middle
+of the turn it runs in.
 
 **The opencode command ships inside the plugin.** A Claude Code plugin declares
 its commands as files and the installer places them. Nothing places a file for
@@ -330,18 +262,24 @@ are still checked in Python — Q2 as a number of 0 or more, Q3 as a whole numbe
 from 1 to 5 — and a rejected one exits non-zero so the command re-asks. Q1 is
 not checked, because any figure of merit is accepted by design.
 
-## Reading the archives back
+## Reading the results back
 
-[`analysis/`](analysis) is the read side: `archives.py` turns each zip into one row —
-session, activity counts, token usage, cost, rating — and `report.py` prints
-those rows as a table, CSV or JSON. Its `fom` column is that session's own
-figure and unit and does not compare across sessions; `sat` is the Q3
-normalisation that does, and is empty for a row written before Q3 was asked. It imports nothing from the plugins and no
-plugin install ships it; the archive is the interface between the two sides.
+[`analysis/`](analysis) is the read side: `archives.py` turns each result into one
+row — session, skills, usage, cost, context, rating — and `report.py` prints those
+rows as a table, CSV or JSON. Its `fom` column is that session's own figure and
+unit and does not compare across sessions; `sat` is the Q3 normalisation that
+does. It imports nothing from the plugins and no plugin install ships it; the
+file on disk is the interface between the two sides.
+
+It also still reads the old `.zip` archives, which held an event log and a copy
+of the whole transcript. Those exist on other machines and some were already
+sent, so they are read for what a document also carries — usage, cost, rating —
+and their skill and context columns come out blank, which is the point: an
+archive with the entire conversation in it cannot answer either question.
 
 ## Repo layout and status
 
-[PLAN.md](PLAN.md) holds the goal, the specification, and the state of each
-step. [AGENTS.md](AGENTS.md) is the brief for agents changing this repo. The
-shared Python package lives at `plugins/claude-code/agent_telemetry/` and is
-used by **both** plugins — the path is historical, not a scope.
+[PLAN.md](PLAN.md) holds the goal, the specification, and what is left to do.
+[AGENTS.md](AGENTS.md) is the brief for agents changing this repo. The shared
+Python package lives at `plugins/claude-code/agent_telemetry/` and is used by
+**both** plugins — the path is historical, not a scope.

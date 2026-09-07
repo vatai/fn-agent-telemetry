@@ -1,43 +1,28 @@
-"""Read collected telemetry archives back into one row per session.
+"""Read collected telemetry back into one row per session.
 
-The archive is the interface: a zip holding `events.jsonl` and, usually,
-`transcript.jsonl`. Nothing here imports the plugins' `agent_telemetry`
-package, and nothing parses the archive filename -- `agent` and `session_id`
-are on every event, so the same reader works whatever an archive is called.
+Two formats sit side by side, and which one a file is decides how it is read.
+A `.json` document is the current form: skills, per-message usage, cost, the
+`AGENTS.md`/`CLAUDE.md` in effect, and the rating, with no conversation in it.
+A `.zip` is the old form, holding an event log and a copy of the whole
+transcript; those archives exist on other machines and some were already sent,
+so they are still read rather than abandoned -- but only for what a document
+also carries, so the columns line up.
 
-What a row costs to build is decided by where each number lives. Counts of
-prompts, turns and tool calls come from the events; tokens and cost reach no
-hook payload and come from the transcript, whose shape is the agent's own. Two
-of those shapes need care:
+Nothing here imports the plugins' `agent_telemetry` package. The file on disk is
+the interface between the two sides.
 
-Claude Code writes one transcript line per content block and replicates the
-whole `message.usage` onto each, so a message that thought before answering
-appears twice with identical counts. Summing per line double-counts exactly the
-messages that did the most work; the rows below sum one usage per `message.id`.
+Two rules survive from reading the old transcripts and still matter, because a
+v1 archive is read with them: Claude Code repeats a message's whole `usage` on
+every content-block record, so usage is summed one per `message.id`; and cost
+comes from the largest `cost-state`, never the last, with absence meaning
+unknown rather than zero. The current plugin applies both before writing a
+document, so a `.json` row simply sums what it is given.
 
-Cost is reported by neither agent the same way. opencode carries `cost` on every
-assistant message, so a session total is a sum -- and a genuine `0` from a free
-model is not missing data. Claude Code reports it only in a `cost-state` record,
-which a short session may never contain, so its cost is `None` rather than `0`
-when no such record was archived.
-
-A stored `scale` is the authority for reading its own `value`. Archives predate
-changes to the feedback vocabulary, so an old row is read with the scale it was
-written against, and flagged when that scale is missing keys the current one has.
-`fom` is free text and its `value` is in whatever unit that session used, so the
-two do not compare across sessions; `satisfaction` is the field that does, being
-the same 1-5 normalisation of whatever figure was measured. Rows written before
-it was asked for carry `None`.
-
-One asymmetry is not corrected here, only named: `/fn-eval` packs the archive in
-the middle of the turn it runs in. opencode repacks at the end of every turn and
-so captures that turn; Claude Code does not, so its archives are short the
-rating turn's `turn_end`, its assistant messages and the seconds it took. Turn
-counts, and anything per turn, are not comparable between the two agents.
+A stored `scale` is the authority for reading its own `value`. `fom` is free
+text in whatever unit that session used, so it does not compare across sessions;
+`satisfaction` is the 1-5 normalisation that does.
 """
 
-import collections
-import datetime as _dt
 import json
 import os
 import zipfile
@@ -58,9 +43,9 @@ FEEDBACK_FIELDS = (
 
 
 def sessions(directory=None):
-    """One row per archive in `directory`, oldest session first."""
-    rows = [read_archive(path) for path in archive_paths(directory)]
-    return sorted(rows, key=lambda row: row["started"] or "")
+    """One row per result file in `directory`, oldest session first."""
+    rows = [read(path) for path in result_paths(directory)]
+    return sorted((row for row in rows if row), key=lambda row: row["started"] or "")
 
 
 def telemetry_dir():
@@ -69,29 +54,90 @@ def telemetry_dir():
     )
 
 
-def archive_paths(directory=None):
+def result_paths(directory=None):
     directory = directory or telemetry_dir()
     if not os.path.isdir(directory):
         return []
-    names = sorted(name for name in os.listdir(directory) if name.endswith(".zip"))
+    names = sorted(n for n in os.listdir(directory) if n.endswith((".json", ".zip")))
     return [os.path.join(directory, name) for name in names]
 
 
-def read_archive(path):
-    """Flatten one archive into a row of session, activity, usage and rating."""
-    with zipfile.ZipFile(path) as archive:
-        events = _read_member(archive, EVENTS_MEMBER)
-        transcript = _read_member(archive, TRANSCRIPT_MEMBER)
-    row = {"archive": os.path.basename(path)}
-    row.update(_session(events))
-    row.update(_activity(events))
-    row.update(_usage(row["agent"], transcript))
-    row.update(_feedback(events))
+def read(path):
+    """Flatten one result file into a row, whichever format it is in."""
+    reader = _read_archive if path.endswith(".zip") else _read_document
+    try:
+        return reader(path)
+    except Exception:
+        return None
+
+
+# --- the current form: one JSON document -------------------------------------
+
+
+def _read_document(path):
+    with open(path, encoding="utf-8") as handle:
+        doc = json.load(handle)
+    session = doc.get("session") or {}
+    host = session.get("host") or {}
+    row = {
+        "result": os.path.basename(path),
+        "format": doc.get("schema_version", 2),
+        "agent": session.get("agent"),
+        "session_id": session.get("session_id"),
+        "user": host.get("user"),
+        "hostname": host.get("hostname"),
+        "cwd": session.get("cwd"),
+        "started": session.get("started"),
+        "ended": session.get("ended"),
+        "duration_s": _elapsed(session.get("started"), session.get("ended")),
+        "skills": len(doc.get("skills") or []),
+        "skills_with_text": sum(
+            1 for skill in doc.get("skills") or [] if skill.get("source") != "listing"
+        ),
+        "skill_names": ", ".join(sorted(s.get("name", "") for s in doc.get("skills") or [])),
+        "context_files": len(doc.get("context") or []),
+        "context_chars": sum(len(c.get("text") or "") for c in doc.get("context") or []),
+    }
+    row.update(_totals(doc.get("usage") or [], doc.get("cost_usd")))
+    row.update(_feedback(doc.get("feedback")))
     return row
 
 
-def _read_member(archive, name):
-    """Parse one JSONL member, skipping any line that is not JSON."""
+# --- the old form: a zip of an event log and a transcript --------------------
+
+
+def _read_archive(path):
+    with zipfile.ZipFile(path) as archive:
+        events = _members(archive, EVENTS_MEMBER)
+        transcript = _members(archive, TRANSCRIPT_MEMBER)
+    first, last = (events[0], events[-1]) if events else ({}, {})
+    host = first.get("host") or {}
+    row = {
+        "result": os.path.basename(path),
+        "format": 1,
+        "agent": first.get("agent"),
+        "session_id": first.get("session_id"),
+        "user": host.get("user"),
+        "hostname": host.get("hostname"),
+        "cwd": first.get("cwd"),
+        "started": first.get("timestamp"),
+        "ended": last.get("timestamp"),
+        "duration_s": _elapsed(first.get("timestamp"), last.get("timestamp")),
+        # A v1 archive predates skill and context collection entirely. It has a
+        # whole transcript and still cannot answer these, which is the point.
+        "skills": None,
+        "skills_with_text": None,
+        "skill_names": None,
+        "context_files": None,
+        "context_chars": None,
+    }
+    rows, cost = _v1_usage(first.get("agent"), transcript)
+    row.update(_totals(rows, cost))
+    row.update(_feedback(_v1_feedback(events)))
+    return row
+
+
+def _members(archive, name):
     if name not in archive.namelist():
         return []
     lines = archive.read(name).decode("utf-8", "replace").splitlines()
@@ -105,152 +151,83 @@ def _parse(line):
         return None
 
 
-def _session(events):
-    first, last = (events[0], events[-1]) if events else ({}, {})
-    host = first.get("host") or {}
-    return {
-        "agent": first.get("agent"),
-        "session_id": first.get("session_id"),
-        "user": host.get("user"),
-        "hostname": host.get("hostname"),
-        "cwd": first.get("cwd"),
-        "started": first.get("timestamp"),
-        "ended": last.get("timestamp"),
-        "duration_s": _elapsed(first.get("timestamp"), last.get("timestamp")),
-        "events": len(events),
-    }
+def _v1_usage(agent, transcript):
+    if agent == "claude-code":
+        return _v1_claude(transcript)
+    if agent == "opencode":
+        return _v1_opencode(transcript)
+    return [], None
 
 
-def _elapsed(start, end):
-    start, end = _time(start), _time(end)
-    return round((end - start).total_seconds(), 1) if start and end else None
-
-
-def _time(timestamp):
-    try:
-        return _dt.datetime.fromisoformat(timestamp)
-    except (TypeError, ValueError):
-        return None
-
-
-def _activity(events):
-    counts = collections.Counter(event.get("event_type") for event in events)
-    return {
-        "prompts": counts["user_prompt"],
-        "turns": counts["turn_end"],
-        "tools": counts["tool_post"],
-        "tools_unfinished": counts["tool_pre"] - counts["tool_post"] - _packing_call(events),
-        "permission_asks": counts["permission_ask"],
-        "notifications": counts["notification"],
-        "compacts": counts["compact"],
-        "subagents": counts["subagent_end"],
-        "top_tools": _top_tools(events),
-    }
-
-
-def _packing_call(events):
-    """1 when the archive was packed inside the `/fn-eval` tool call's own window.
-
-    The rating is written from a tool call whose `tool_post` is recorded only
-    once that call returns -- after the zip has been closed. An agent that
-    repacks at the end of the turn picks the line up; one that packs and stops
-    never can, so without this every archive of its would report a phantom
-    unfinished call, and a real denied one would be invisible among them.
-    """
-    calls = [event for event in events if event.get("event_type") in ("tool_pre", "tool_post")]
-    rated = any(event.get("event_type") == "feedback" for event in events)
-    return 1 if rated and calls and calls[-1].get("event_type") == "tool_pre" else 0
-
-
-def _top_tools(events, limit=3):
-    names = (event.get("tool_name") for event in events if event.get("event_type") == "tool_post")
-    counts = collections.Counter(name for name in names if name)
-    return ", ".join(f"{name}x{count}" for name, count in counts.most_common(limit))
-
-
-def _usage(agent, transcript):
-    readers = {"claude-code": _claude_usage, "opencode": _opencode_usage}
-    reader = readers.get(agent)
-    return reader(transcript) if reader and transcript else _no_usage()
-
-
-def _no_usage():
-    return _totals([], None, [])
-
-
-def _claude_usage(transcript):
-    """Sum one usage per `message.id`; a line per content block repeats it."""
-    by_message, models = {}, []
+def _v1_claude(transcript):
+    """One usage per `message.id`; a record per content block repeats it."""
+    rows, costs, seen = [], [], set()
     for record in transcript:
-        if record.get("type") != "assistant":
+        if record.get("type") == "assistant":
+            message = record.get("message") or {}
+            if message.get("id") in seen:
+                continue
+            seen.add(message.get("id"))
+            usage = message.get("usage") or {}
+            details = usage.get("output_tokens_details") or {}
+            rows.append({
+                "model": message.get("model"),
+                "input": usage.get("input_tokens") or 0,
+                "output": usage.get("output_tokens") or 0,
+                "reasoning": details.get("thinking_tokens") or 0,
+                "cache_read": usage.get("cache_read_input_tokens") or 0,
+                "cache_write": usage.get("cache_creation_input_tokens") or 0,
+            })
+        elif record.get("type") == "cost-state" and record.get("totalCostUSD") is not None:
+            costs.append(record["totalCostUSD"])
+    return rows, (max(costs) if costs else None)
+
+
+def _v1_opencode(transcript):
+    rows, cost, any_reply = [], 0.0, False
+    for record in transcript:
+        info = record.get("info") or {}
+        if info.get("role") != "assistant":
             continue
-        message = record.get("message") or {}
-        models.append(message.get("model"))
-        by_message.setdefault(message.get("id"), _claude_tokens(message.get("usage") or {}))
-    return _totals(by_message.values(), _claude_cost(transcript), models)
+        any_reply = True
+        cost += info.get("cost") or 0
+        tokens = info.get("tokens") or {}
+        cache = tokens.get("cache") or {}
+        rows.append({
+            "model": "/".join(p for p in (info.get("providerID"), info.get("modelID")) if p),
+            "input": tokens.get("input") or 0,
+            "output": tokens.get("output") or 0,
+            "reasoning": tokens.get("reasoning") or 0,
+            "cache_read": cache.get("read") or 0,
+            "cache_write": cache.get("write") or 0,
+        })
+    return rows, (cost if any_reply else None)
 
 
-def _claude_tokens(usage):
-    return {
-        "input": usage.get("input_tokens") or 0,
-        "output": usage.get("output_tokens") or 0,
-        "reasoning": (usage.get("output_tokens_details") or {}).get("thinking_tokens") or 0,
-        "cache_read": usage.get("cache_read_input_tokens") or 0,
-        "cache_write": usage.get("cache_creation_input_tokens") or 0,
-    }
+def _v1_feedback(events):
+    rated = [event for event in events if event.get("event_type") == "feedback"]
+    return rated[-1] if rated else None
 
 
-def _claude_cost(transcript):
-    """`cost-state` is written at checkpoints, so take the largest, not the last."""
-    costs = [
-        record.get("totalCostUSD")
-        for record in transcript
-        if record.get("type") == "cost-state" and record.get("totalCostUSD") is not None
-    ]
-    return max(costs) if costs else None
+# --- shared ------------------------------------------------------------------
 
 
-def _opencode_usage(transcript):
-    messages = [record.get("info") or {} for record in transcript]
-    replies = [info for info in messages if info.get("role") == "assistant"]
-    cost = sum(info.get("cost") or 0 for info in replies) if replies else None
-    tokens = (_opencode_tokens(info.get("tokens") or {}) for info in replies)
-    return _totals(tokens, cost, [_opencode_model(info) for info in replies])
-
-
-def _opencode_model(info):
-    """Provider and model together: the same model id can come from either."""
-    return "/".join(part for part in (info.get("providerID"), info.get("modelID")) if part)
-
-
-def _opencode_tokens(tokens):
-    cache = tokens.get("cache") or {}
-    return {
-        "input": tokens.get("input") or 0,
-        "output": tokens.get("output") or 0,
-        "reasoning": tokens.get("reasoning") or 0,
-        "cache_read": cache.get("read") or 0,
-        "cache_write": cache.get("write") or 0,
-    }
-
-
-def _totals(per_message, cost, models):
+def _totals(rows, cost):
     totals = {field: 0 for field in TOKEN_FIELDS}
-    for tokens in per_message:
+    for row in rows:
         for field in TOKEN_FIELDS:
-            totals[field] += tokens[field]
+            totals[field] += row.get(field) or 0
+    totals["messages"] = len(rows)
     totals["total"] = sum(totals[field] for field in BILLED_FIELDS)
     totals["cost_usd"] = cost
-    totals["models"] = ", ".join(dict.fromkeys(name for name in models if name))
+    totals["models"] = ", ".join(dict.fromkeys(r.get("model") for r in rows if r.get("model")))
     return totals
 
 
-def _feedback(events):
+def _feedback(answer):
     """The session's rating, read through the scale it was written against."""
-    rated = [event for event in events if event.get("event_type") == "feedback"]
-    if not rated:
+    if not answer:
         return dict.fromkeys(FEEDBACK_FIELDS)
-    answer = rated[-1]
     scale = answer.get("scale") or {}
     fields = {
         name: answer.get(name)
@@ -260,8 +237,8 @@ def _feedback(events):
         "unit": scale.get("unit"),
         "better": scale.get("better"),
         "scale": describe_scale(scale),
-        # Ratings collected before measured figures existed carry a 1-5 scale
-        # whatever the figure, so their value cannot be read as a measurement.
+        # Ratings from before measured figures existed carry a 1-5 scale
+        # whatever the figure, so their value is not a measurement.
         "legacy_scale": "unit" not in scale,
     }
 
@@ -274,3 +251,16 @@ def describe_scale(scale):
     unit = f" {scale['unit']}" if scale.get("unit") else ""
     better = f", {scale['better']} is better" if scale.get("better") else ""
     return f"{bound}{unit}{better}"
+
+
+def _elapsed(start, end):
+    import datetime as _dt
+
+    def moment(stamp):
+        try:
+            return _dt.datetime.fromisoformat(stamp)
+        except (TypeError, ValueError):
+            return None
+
+    start, end = moment(start), moment(end)
+    return round((end - start).total_seconds(), 1) if start and end else None

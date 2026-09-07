@@ -1,27 +1,68 @@
 # Goal
 
-Collect detailed local usage information from Claude Code through its native integrations.
+Collect detailed local usage information from Claude Code and opencode CLI sessions,
+through each agent's native integrations: what the session was configured with, what it
+consumed, and how the user rated it.
 
 # Specification
 
-- Observe local Claude Code CLI sessions, including interactive and non-interactive terminal sessions.
+- Observe local CLI sessions of both agents, interactive and non-interactive.
 - Install integrations in per-user agent configuration.
-- Capture session lifecycle, prompts, tool activity, tool inputs and outputs, assistant output, errors, and raw native event payloads.
-- Retain telemetry indefinitely under the directory configured by `AGENT_TELEMETRY_DIR`, one zip archive per session holding that session's JSONL event log and transcript.
+- Collect only five things: the skills available to the session and their defining text;
+  per-message token usage; the session cost; the contents of the `AGENTS.md` and
+  `CLAUDE.md` instruction files in effect; and the user's rating.
+- Collect no conversation — no prompts, assistant output, tool inputs or outputs, tool
+  activity, or native hook payloads — and keep no copy of the session transcript.
+- Record the user's own rating: a figure of merit of their choosing, and one fixed 1-5
+  normalisation of it that compares across sessions and users.
+- Retain results indefinitely under `AGENT_TELEMETRY_DIR`, as one JSON file per *rated*
+  session. Not an archive, and not a directory.
 - Telemetry failures must never interrupt an agent session.
 - IDE and cloud sessions are out of scope.
 
 # Plan/Steps
 
-1. **Done.** Implement an `agent-telemetry-hook` executable that receives native hook payloads on stdin and writes enriched JSONL events.
-2. **Done.** Add a Claude Code adapter that normalizes native lifecycle and tool events while retaining raw payloads.
-3. **Done.** Snapshot the session transcript. Assistant output, token usage and cost are all absent from the nine hook payloads but present in the transcript at `transcript_path`, so pack it together with the event log into `<AGENT_TELEMETRY_DIR>/<date>-<time>-<session_id>.zip`, named for when the session started so listings sort chronologically and repacking replaces one archive rather than adding another. No hook triggers a snapshot; archiving happens only as the last step of `/fn-eval`.
-4. **Done.** Collect user feedback, since telemetry measures what a session did but not whether it was any good. `/fn-eval` asks two questions, one at a time — a figure of merit from a fixed vocabulary, then a value — and appends the answer to the session's own event log as `event_type: "feedback"`, sharing its `session_id` with every other event so the two halves need no join. The figure decides the scale: subjective ones are rated 1–5, measured ones (`speedup`, `time_saved`, `iterations`) take the number the user observed in that figure's unit. Asking separately is what lets the second question be worded from the first answer. The scale is stored on the event and the value validated against it. The vocabulary is fixed to keep scores comparable across sessions and users; free wording goes in `comment`. `/fn-eval` also packs the archive, making it the plugin's only command. Note the Specification above describes only events and transcripts, so it does not yet account for feedback.
-5. Decide what the hook log should still carry now that the transcript is captured. Prompts, tool inputs and tool responses are duplicated there, while permission prompts (`notification`), `tool_pre` for denied or cancelled calls, `session_end.reason` and the `host` block have no transcript equivalent.
-6. Add per-user installation and status commands that validate CLI support, merge telemetry-only hook configuration, and validate the log path.
-7. Test event normalization, transcript retention, non-blocking failures, and idempotent installation.
-8. **Done.** Extend the same capture to opencode, so one archive format covers both agents. The Python package is unchanged below the adapter: the opencode plugin (`plugins/opencode/plugin/agent-telemetry.js`) is loaded into opencode's own process rather than run per event, and pipes each hook to the same `agent_telemetry.hook` on stdin. Four things had no Claude Code counterpart. opencode keeps its messages in a database, not a transcript file, so the plugin reads them back over the SDK at the end of every turn, `agent_telemetry.transcript` writes them to `.pending/<session_id>.transcript.jsonl`, and that dump repacks an already-rated session — `/fn-eval` packs its archive in the middle of the turn it runs in, so without the repack the archive would miss that turn. There is no `${CLAUDE_PLUGIN_ROOT}`, so the plugin's `shell.env` hook exports `AGENT_TELEMETRY_BIN` for the command to resolve. There is no `AskUserQuestion`, so `/fn-eval` asks its two questions in prose; the answers are free text but the vocabulary and the numeric scale are still enforced in Python, and a rejected value makes the command re-ask. And `permission.ask` is recorded as a new `permission_ask` event type, since how often a session had to stop and ask has no equivalent anywhere else. Session lookup for `/fn-eval` now reads the session id and transcript path off the events themselves (`snapshot.resolve_session`), keyed by working directory *and* agent, replacing the Claude-specific trick of taking them from the transcript filename. Note the Goal and Specification above name only Claude Code, so neither yet accounts for a second agent.
-9. **Done.** Parse and analyse the collected archives. `analysis/archives.py` reads each `<date>-<time>-<session_id>.zip` into one row — session, activity counts, token usage, cost, rating — and `analysis/report.py` prints those rows as a table, CSV or JSON, so a cross-session aggregate is a group-by over the export rather than a mode of its own. It lives outside `plugins/` and imports nothing from `agent_telemetry`: the archive is the interface, and `package.json` ships neither, so no plugin install carries the read side. Nothing parses an archive filename either, since `agent` and `session_id` are on every event. Four things the data forced. Claude Code writes one transcript line per content block and replicates the whole `message.usage` onto each, so tokens are summed per `message.id` — the obvious per-line sum double-counts every message that thought or called a tool, and the README claimed that wrong route until this step corrected it. Cost is `None`, not `0`, for a Claude Code session whose transcript holds no `cost-state` record, which short sessions do not; opencode reports a real per-message `cost` that may genuinely be `0`. A stored `scale` is the authority for reading its own `value`, and a row whose scale predates measured figures is flagged rather than compared. And `tool_pre` without `tool_post` is counted, since a denied or cancelled call appears nowhere in the transcript — but the count first discards one artifact: `/fn-eval` writes its rating from a tool call whose own `tool_post` lands after the zip is closed, so an agent that does not repack shows a phantom unfinished call in every archive. Three limits. The packing point makes turn counts incomparable between the agents: opencode repacks at the end of the turn and captures it, Claude Code packs mid-turn and is short that turn's `turn_end`, its assistant messages and its seconds — named in the reader, not corrected for. Subagent spend looks absent from the archived transcript (the one session with a `subagent_end` has no sidechain records). And of the three archives collected so far two carry a pre-`_measured()` feedback row, so the reader is validated on a corpus no aggregate should yet be quoted from.
-10. Repack a rated session when it ends, so its archive carries the cost. Reading the archives back showed every Claude Code session with an empty cost column, and the cause was not session length: `cost-state` is written as a session *ends* and is the transcript's last line, while `/fn-eval` packs from inside the turn it runs in. Nothing the command can do reaches that line — a slash command cannot end a session, and the archive would be closed before the line was written anyway. So the `SessionEnd` hook now repacks a session that already carries a rating, in `hook.py`, on the same rule the opencode plugin already applies at the end of every turn: rating is still the only thing that creates an archive, this only keeps one from going stale. `/fn-eval` also tells the user to close the session, since an archive from a session left open is the one case that keeps its cost missing. Verified so far: the repack fires and the rewritten archive holds the events that came after the rating. Not yet verified: that `cost-state` is on disk by the time the hook runs. Neither test path could show it — a headless `claude -p` session writes no `cost-state` at all, and a pty-driven interactive one exited cleanly (`prompt_input_exit`) but left no transcript file behind. The check is to exit a real rated session and look for a cost in `analysis/report.py`.
+How each piece works is in `dev-notes.md`; this is what is left to do.
 
-11. Ask a third question, and stop fixing the figure of merit. A closed vocabulary of eight kept scores comparable but could not describe what a session was actually for: the useful figure of merit is domain-specific — GFLOP/s for a kernel, samples/s for a training loop, quality for a generated plot — and none of those were in it. So `--fom` now takes any name, `--unit` carries the unit that no longer comes from a lookup, and the figure's stored scale is open-ended and directionless, because `loss` falls where `accuracy` rises and nothing can tell which an undeclared name is. Comparability moves onto a third question instead: `--satisfaction`, the same figure normalised onto 1-5 on every session, where a 100x speedup is a 5 and a slowdown is a 1. That is the scale that is now fixed and properly validated, while the figure's own value is bounded only below. Step 4's note that the vocabulary is fixed no longer holds; `SUGGESTED_FOMS` seeds the prompt and validates nothing. The suggestion list is duplicated four ways — the Python, both command prompts, the README — since a markdown prompt cannot import Python; `dev-notes.md` names all four, and nothing enforces their agreement, so drift produces unevenly-prompted data rather than an error. The reader gained a `satisfaction` field and a `sat` column, `None` on the rows collected before this step.
+**Built.** Both plugins collect the five things and nothing else, into one JSON
+document per rated session. A hook reads a payload for the session id, the
+working directory and the record path, then discards it — Claude Code now
+declares three hooks instead of nine, and opencode hooks no prompt, tool call or
+tool result at all, so neither spawns anything on the hot path of a turn. Usage
+and cost are read from each agent's own record and never copied; skills are
+folded from the session's own listing and their defining text found on disk where
+it exists; `AGENTS.md` and `CLAUDE.md` are snapshotted whole at `SessionStart`.
+`/fn-eval` is still the only thing that produces output, and `SessionEnd` writes
+a rated session again so it carries the cost. `analysis/` reads the documents and
+still reads the old `.zip` archives.
+
+Verified against a real 1.2 MB session record: 97 usage rows and `$4.13`, both
+identical to what the old reader produced from the same session; 19 skills, one
+with a file on disk; the `AGENTS.md`/`CLAUDE.md` symlink stored once under both
+names; an unrated session produces nothing; unparseable and empty stdin are
+dropped exiting 0; and a `PreToolUse` payload's command string reaches no file.
+
+One caveat stands: the corpus is too small, and too mixed in feedback vintage,
+to quote an aggregate from.
+
+1. **Decide what to do about `subject`.** It is the one piece of prose still
+   collected, and the user never approves it: `fn-eval.md` step 1 is "Work out
+   the subject yourself — do not ask", so the agent writes a description of the
+   task and it is stored as given. In a real session it read "looking up the
+   current weather and 3-day forecast for Edogawa City, Tokyo" — topic and
+   location — from a document that otherwise held no trace of the conversation.
+   Either drop the field, or state the derived subject in Q1's question text so
+   the user sees and can correct it. The second is recommended: a row with no
+   description of what the session was for is hard to interpret, and it adds no
+   question and changes no answer. Left open because it touches `/fn-eval`, whose
+   three questions are otherwise not to be moved.
+
+2. **Install and status commands,** per-user: validate CLI support, merge
+   telemetry-only hook configuration, and validate the output path. Showing and
+   deleting what was already collected belongs here — the old `.zip` archives
+   hold whole conversations, and so do the `.pending/*.jsonl` event logs of every
+   session that was never rated, which nothing has ever pruned.
+
+3. **Tests** for skill discovery and the listing fold, usage extraction against a
+   known record, context collection through a symlink, non-blocking failures, and
+   idempotent installation.

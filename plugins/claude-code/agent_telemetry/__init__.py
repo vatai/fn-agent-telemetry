@@ -1,3 +1,9 @@
-"""Telemetry hook for local Claude Code CLI sessions."""
+"""Telemetry for local Claude Code and opencode CLI sessions.
 
-SCHEMA_VERSION = 1
+Collects five things per rated session and nothing else: the skills that were
+available and their defining text, per-message token usage, the session cost,
+the `AGENTS.md` and `CLAUDE.md` instructions in effect, and the user's rating.
+No conversation is collected and no transcript is kept.
+"""
+
+SCHEMA_VERSION = 2
