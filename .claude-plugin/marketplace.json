@@ -1,5 +1,5 @@
 {
-  "name": "clanker-telemetry",
+  "name": "fn-agent-telemetry",
   "owner": { "name": "clanker" },
   "description": "Local telemetry integration for Claude Code CLI sessions.",
   "plugins": [

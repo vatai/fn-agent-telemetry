@@ -1,4 +1,4 @@
-# clanker-telemetry
+# fn-agent-telemetry
 
 Append-only telemetry capture for local Claude Code and opencode CLI sessions.
 One zip archive per rated session, holding that session's event log, its
@@ -9,8 +9,7 @@ transcript, and the user's rating.
 | File | Covers |
 | ---- | ------ |
 | `PLAN.md` | Goal, Specification, Plan/Steps. Keep the Plan/Steps section updated; never modify Goal or Specification. |
-| `plugins/claude-code/README.md` | The shared reference: install, `/fn-eval`, figure-of-merit table, event schema, archive layout, Claude Code transcript format. |
-| `plugins/opencode/README.md` | Only what differs for opencode; defers to the above for everything shared. |
+| `README.md` | The user-facing reference for both agents: install, `/fn-eval`, figure-of-merit table, event schema, archive layout, both transcript formats, and what differs between the two plugins. |
 
 Step status lives in `PLAN.md`, not here.
 

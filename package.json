@@ -1,5 +1,5 @@
 {
-  "name": "clanker-telemetry",
+  "name": "fn-agent-telemetry",
   "version": "0.1.0",
   "description": "Append-only telemetry capture for local opencode and Claude Code CLI sessions",
   "type": "module",
