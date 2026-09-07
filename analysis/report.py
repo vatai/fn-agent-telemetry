@@ -8,9 +8,11 @@
 The table is a readable subset; `csv` and `json` carry the whole row, so a
 cross-session aggregate is a group-by over the export rather than a mode here.
 
-A value marked `!` was rated against a scale that predates the current
-vocabulary and cannot be compared with today's, and a blank cost means the agent
-archived none -- neither is a zero. Tokens are split the way they are charged:
+The `fom` column is that session's own figure of merit and unit, which do not
+compare across sessions; `sat` is the 1-5 normalisation of it that does. A value
+marked `!` was rated against a scale that predates the current vocabulary and
+cannot be compared with today's, and a blank cost means the agent archived none
+-- neither is a zero. Tokens are split the way they are charged:
 `in`, `cache r`, `cache w` and `out` add up to `total`, while `think` is the
 thinking part of `out` and so is already inside it. Cache reads are counted
 every turn they happen on, so `total` is tokens paid for, not conversation size.
@@ -39,7 +41,8 @@ COLUMNS = (
     ("think", lambda row: _tokens(row["reasoning"])),
     ("total", lambda row: _tokens(row["total"])),
     ("cost", lambda row: _cost(row["cost_usd"])),
-    ("rating", lambda row: _rating(row)),
+    ("fom", lambda row: _fom(row)),
+    ("sat", lambda row: _number(row["satisfaction"])),
     ("subject", lambda row: (row["subject"] or "")[:40]),
 )
 
@@ -107,7 +110,8 @@ def _number(value):
     return "" if value is None else f"{value:g}"
 
 
-def _rating(row):
+def _fom(row):
+    """The session's own figure of merit; `sat` is the comparable column."""
     if not row["fom"]:
         return ""
     unit = row["unit"] or ""

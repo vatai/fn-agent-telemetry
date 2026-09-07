@@ -9,7 +9,8 @@ transcript, and the user's rating.
 | File | Covers |
 | ---- | ------ |
 | `PLAN.md` | Goal, Specification, Plan/Steps. Keep the Plan/Steps section updated; never modify Goal or Specification. |
-| `README.md` | The user-facing reference for both agents: install, `/fn-eval`, figure-of-merit table, event schema, archive layout, both transcript formats, and what differs between the two plugins. |
+| `README.md` | User-facing: what `/fn-eval` asks, install for both agents, and what a figure of merit is. |
+| `dev-notes.md` | The reference: the three questions and where their suggestions live, event schema, archive layout, both transcript formats, and what differs between the two plugins. |
 
 Step status lives in `PLAN.md`, not here.
 
@@ -42,7 +43,9 @@ reaches no plugin install. The archive is the interface between the two sides.
 - Archives are named `<date>-<time>-<session_id>.zip` for when the session
   *started*, local time; timestamps inside are UTC. Re-running `/fn-eval`
   overwrites the session's own archive.
-- The figure-of-merit vocabulary and its scales are fixed in
-  `agent_telemetry/feedback.py`. Widen it *before* collecting, not after —
-  scores must stay comparable across sessions and users.
+- `/fn-eval` asks three questions: the figure of merit, its value, and the
+  session overall on a fixed 1–5 scale. The figure is free text, since a useful
+  one is domain-specific; `SUGGESTED_FOMS` in `agent_telemetry/feedback.py` only
+  seeds the prompt. Comparability across sessions and users rests entirely on
+  that third answer, so its scale is the thing that must not move.
 - Every event carries `session_id` and `agent`, so usage and rating need no join.

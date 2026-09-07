@@ -1,6 +1,6 @@
 {
   "name": "fn-agent-telemetry",
-  "owner": { "name": "clanker" },
+  "owner": { "name": "Emil Vatai" },
   "description": "Local telemetry integration for Claude Code CLI sessions.",
   "plugins": [
     {

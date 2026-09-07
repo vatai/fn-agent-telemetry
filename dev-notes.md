@@ -9,32 +9,51 @@ this once before you leave it:
 /fn-eval
 ```
 
-The agent proposes what the session should be judged on, then asks two
-questions, one at a time — a figure of merit, then a value — and packs the
-archive.
+The agent proposes what the session should be judged on, then asks three
+questions, one at a time, and packs the archive.
 
-| Figure of merit | Rates                                           | You answer |
-| --------------- | ----------------------------------------------- | ---------- |
-| `satisfaction`  | how good the session was overall                | 1–5        |
-| `correctness`   | did the work come out right                     | 1–5        |
-| `code_quality`  | readability and fit with the surrounding code   | 1–5        |
-| `autonomy`      | how little steering it needed                   | 1–5        |
-| `trust`         | confidence in the result without re-checking it | 1–5        |
-| `speedup`       | measured walltime vs the previous version       | a ratio, × |
-| `time_saved`    | minutes saved vs doing it by hand               | minutes    |
-| `iterations`    | corrections needed before it was right          | a count    |
+| Question | Asks for                                    | You answer             |
+| -------- | ------------------------------------------- | ---------------------- |
+| Q1       | the figure of merit — what was measured     | a name, or your own    |
+| Q2       | its value                                   | a number, in Q1's unit |
+| Q3       | the session overall, that figure normalised | 1–5                    |
 
-The second question is worded from the answer to the first, which is why they
-are asked separately: a rating offers 1–5, a measurement asks for the number you
-observed. The scale — bounds, unit, and whether higher or lower is better — is
-written onto the event, so ratings and measurements stay readable side by side
-without this table. Values are validated against it, so an out-of-range rating
-is an error rather than a stored number.
+Q1 is free text. A useful figure of merit is domain-specific — GFLOP/s for a
+kernel, samples/s for a training loop, × for an optimisation — so the eight the
+command offers are suggestions, not a vocabulary, and a name typed instead of
+picked is stored as given. The unit comes with the number rather than from a
+lookup, and the figure's scale is written onto the event as open-ended and
+without a direction: `loss` falls where `accuracy` rises, and nothing can tell
+which a name nobody declared in advance is.
 
-Claude Code asks the two questions as `AskUserQuestion` menus. opencode has no
-such tool, so it asks them in prose and the answers arrive as free text; the
-vocabulary and the scale are enforced in Python either way, and a value opencode
-rejects makes the command re-ask.
+Which is why Q3 exists. Free text alone would leave N sessions with N
+incomparable metrics, so Q3 asks for the same figure normalised onto one 1–5
+scale on every session: a 100× speedup is a 5, no change a 3, a slowdown a 1.
+Direction lives there too, and is asked for rather than inferred. Q2 is
+therefore bounded only below, while Q3 is validated properly — it is the one
+field that compares across sessions and users.
+
+Each question is worded from the answer before it, which is why they are asked
+separately. Claude Code asks all three as `AskUserQuestion` menus. opencode has
+no such tool, so it asks them in prose and the answers arrive as free text; the
+numbers are checked in Python either way, and an answer it rejects makes the
+command re-ask.
+
+### Where the Q1 suggestions live
+
+The suggestion list is written out in four places, because a markdown prompt
+cannot import Python and each agent reads its own prompt. Add a figure to all of
+them, or the agents offer different things:
+
+| File                                              | What                                                                                                                    |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `plugins/claude-code/agent_telemetry/feedback.py` | `SUGGESTED_FOMS` — the canonical list: name, unit, what it suits. Only `--help` reads it; nothing validates against it. |
+| `plugins/claude-code/commands/fn-eval.md`         | The step 2 table, offered as `AskUserQuestion` options.                                                                 |
+| `plugins/opencode/command/fn-eval.md`             | The step 2 table, offered in prose.                                                                                     |
+| `README.md`, `## FOM: Figure of merit`            | The user-facing prose version, and where the list came from.                                                            |
+
+Nothing enforces agreement between them, since `--fom` accepts any name — a
+list that has drifted produces valid but unevenly-prompted data, not an error.
 
 **Skip `/fn-eval` and you get no archive.** Rating is the only thing that
 creates one. The events survive in `.pending/`, but under Claude Code the
@@ -48,9 +67,9 @@ So the `SessionEnd` hook repacks a session that has already been rated. Rate and
 never exit, and the archive keeps everything but the cost. opencode has no
 equivalent gap: it repacks a rated session at the end of every turn.
 
-The vocabulary is fixed so scores stay comparable across sessions and users;
-anything it cannot express goes in `--comment`. Widen it in
-`agent_telemetry/feedback.py` before collecting, not after.
+Q3's 1–5 scale is what keeps scores comparable across sessions and users, so it
+is fixed; Q1 is deliberately not. Anything the three numbers cannot express goes
+in `--comment`.
 
 ## Options
 
@@ -139,19 +158,19 @@ Every object has:
 Plus, per `event_type`. One taxonomy, two sets of native names; a `—` in an
 agent's column means that agent has no such event:
 
-| `event_type`     | Claude Code        | opencode              | Extra fields                                   |
-| ---------------- | ------------------ | --------------------- | ---------------------------------------------- |
-| `session_start`  | `SessionStart`     | `session.created`     | `source` (Claude Code)                         |
-| `session_end`    | `SessionEnd`       | `session.deleted`     | `reason` (Claude Code)                         |
-| `user_prompt`    | `UserPromptSubmit` | `chat.message`        | `prompt`                                       |
-| `tool_pre`       | `PreToolUse`       | `tool.execute.before` | `tool_name`, `tool_input`                      |
-| `tool_post`      | `PostToolUse`      | `tool.execute.after`  | `tool_name`, `tool_input`, `tool_response`     |
-| `turn_end`       | `Stop`             | `session.idle`        | —                                              |
-| `subagent_end`   | `SubagentStop`     | —                     | —                                              |
-| `notification`   | `Notification`     | `session.error`       | `message`                                      |
-| `compact`        | `PreCompact`       | `session.compacted`   | `trigger`, `custom_instructions` (Claude Code) |
-| `permission_ask` | —                  | `permission.ask`      | `tool_name`, `message`, `status`               |
-| `feedback`       | `SlashCommand`     | `SlashCommand`        | `subject`, `fom`, `scale`, `value`, `comment`  |
+| `event_type`     | Claude Code        | opencode              | Extra fields                                                                        |
+| ---------------- | ------------------ | --------------------- | ----------------------------------------------------------------------------------- |
+| `session_start`  | `SessionStart`     | `session.created`     | `source` (Claude Code)                                                              |
+| `session_end`    | `SessionEnd`       | `session.deleted`     | `reason` (Claude Code)                                                              |
+| `user_prompt`    | `UserPromptSubmit` | `chat.message`        | `prompt`                                                                            |
+| `tool_pre`       | `PreToolUse`       | `tool.execute.before` | `tool_name`, `tool_input`                                                           |
+| `tool_post`      | `PostToolUse`      | `tool.execute.after`  | `tool_name`, `tool_input`, `tool_response`                                          |
+| `turn_end`       | `Stop`             | `session.idle`        | —                                                                                   |
+| `subagent_end`   | `SubagentStop`     | —                     | —                                                                                   |
+| `notification`   | `Notification`     | `session.error`       | `message`                                                                           |
+| `compact`        | `PreCompact`       | `session.compacted`   | `trigger`, `custom_instructions` (Claude Code)                                      |
+| `permission_ask` | —                  | `permission.ask`      | `tool_name`, `message`, `status`                                                    |
+| `feedback`       | `SlashCommand`     | `SlashCommand`        | `subject`, `fom`, `scale`, `value`, `satisfaction`, `satisfaction_scale`, `comment` |
 
 `permission_ask` is opencode-only, and is kept because how often a session had
 to stop and ask is a signal nothing else carries. `subagent_end` is Claude
@@ -305,17 +324,19 @@ defined themselves is left alone.
 hook exports `AGENT_TELEMETRY_BIN` into the shell tool's environment, and
 `/fn-eval` resolves the feedback executable through it.
 
-**There is no `AskUserQuestion` under opencode.** The two questions are asked in
-prose instead of as a menu, so the answers arrive as free text. They are still
-checked: the figure of merit is a fixed vocabulary and the value is parsed as a
-number and validated against that figure's scale, all in Python. A rejected
-value exits non-zero and the command re-asks.
+**There is no `AskUserQuestion` under opencode.** The three questions are asked
+in prose instead of as menus, so the answers arrive as free text. The numbers
+are still checked in Python — Q2 as a number of 0 or more, Q3 as a whole number
+from 1 to 5 — and a rejected one exits non-zero so the command re-asks. Q1 is
+not checked, because any figure of merit is accepted by design.
 
 ## Reading the archives back
 
 [`analysis/`](analysis) is the read side: `archives.py` turns each zip into one row —
 session, activity counts, token usage, cost, rating — and `report.py` prints
-those rows as a table, CSV or JSON. It imports nothing from the plugins and no
+those rows as a table, CSV or JSON. Its `fom` column is that session's own
+figure and unit and does not compare across sessions; `sat` is the Q3
+normalisation that does, and is empty for a row written before Q3 was asked. It imports nothing from the plugins and no
 plugin install ships it; the archive is the interface between the two sides.
 
 ## Repo layout and status

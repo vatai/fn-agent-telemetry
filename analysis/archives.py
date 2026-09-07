@@ -24,6 +24,10 @@ when no such record was archived.
 A stored `scale` is the authority for reading its own `value`. Archives predate
 changes to the feedback vocabulary, so an old row is read with the scale it was
 written against, and flagged when that scale is missing keys the current one has.
+`fom` is free text and its `value` is in whatever unit that session used, so the
+two do not compare across sessions; `satisfaction` is the field that does, being
+the same 1-5 normalisation of whatever figure was measured. Rows written before
+it was asked for carry `None`.
 
 One asymmetry is not corrected here, only named: `/fn-eval` packs the archive in
 the middle of the turn it runs in. opencode repacks at the end of every turn and
@@ -47,7 +51,10 @@ TOKEN_FIELDS = ("input", "output", "reasoning", "cache_read", "cache_write")
 # `reasoning` is the thinking part of `output`, not a sixth kind of token, so a
 # total that added it in would count it twice.
 BILLED_FIELDS = ("input", "output", "cache_read", "cache_write")
-FEEDBACK_FIELDS = ("subject", "fom", "value", "unit", "better", "scale", "comment", "legacy_scale")
+FEEDBACK_FIELDS = (
+    "subject", "fom", "value", "unit", "better", "scale",
+    "satisfaction", "comment", "legacy_scale",
+)
 
 
 def sessions(directory=None):
@@ -245,7 +252,10 @@ def _feedback(events):
         return dict.fromkeys(FEEDBACK_FIELDS)
     answer = rated[-1]
     scale = answer.get("scale") or {}
-    fields = {name: answer.get(name) for name in ("subject", "fom", "value", "comment")}
+    fields = {
+        name: answer.get(name)
+        for name in ("subject", "fom", "value", "satisfaction", "comment")
+    }
     return fields | {
         "unit": scale.get("unit"),
         "better": scale.get("better"),
@@ -257,8 +267,10 @@ def _feedback(events):
 
 
 def describe_scale(scale):
+    """A free-form figure has no direction to report, so that clause is dropped."""
     if not scale:
         return None
     bound = f"{scale['min']}-{scale['max']}" if scale.get("max") else f"{scale.get('min')}+"
     unit = f" {scale['unit']}" if scale.get("unit") else ""
-    return f"{bound}{unit}, {scale.get('better')} is better"
+    better = f", {scale['better']} is better" if scale.get("better") else ""
+    return f"{bound}{unit}{better}"
