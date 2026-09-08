@@ -1,6 +1,6 @@
 {
   "name": "fn-agent-telemetry",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Append-only telemetry capture for local opencode and Claude Code CLI sessions",
   "type": "module",
   "main": "plugins/opencode/plugin/agent-telemetry.js",
