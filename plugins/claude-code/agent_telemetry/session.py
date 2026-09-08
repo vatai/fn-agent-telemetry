@@ -11,7 +11,7 @@ document stays in `.pending/`, holding no conversation either way.
 
 import os
 
-from . import SCHEMA_VERSION, adapters, context, document, paths, skills, tools, usage
+from . import SCHEMA_VERSION, adapters, context, document, paths, scrub, skills, tools, usage
 
 # Bookkeeping, not collected data: where to find the agent's own record. Kept in
 # the pending document so `/fn-eval` and the end-of-session pass can find it,
@@ -100,10 +100,29 @@ def _finalize(session_id, agent):
     destination = paths.output_path(session_id, document.started_at(doc))
     if not destination:
         return None
-    shipped = {key: value for key, value in doc.items() if key != RECORD_KEY}
-    document.write(destination, shipped)
+    document.write(destination, _shipped(doc))
     document.save(session_id, doc)
     return destination
+
+
+def _shipped(doc):
+    """The document as it is written out: no record path, and no local paths."""
+    session = doc.get("session") or {}
+    shipped = {key: value for key, value in doc.items() if key != RECORD_KEY}
+    shipped["session"] = _shipped_session(session)
+    return scrub.document(shipped, session.get("cwd"))
+
+
+def _shipped_session(session):
+    """Only the project directory's name goes out, not where it sits on this disk.
+
+    The pending document keeps the whole path: `resolve` matches on it, and the
+    skill and instruction lookups walk it.
+    """
+    cwd = session.get("cwd")
+    if not cwd:
+        return session
+    return session | {"cwd": os.path.basename(os.path.normpath(cwd))}
 
 
 def _user_instruction_dirs(agent):

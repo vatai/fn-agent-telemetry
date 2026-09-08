@@ -114,10 +114,12 @@ def now_iso():
 
 
 def _host():
-    import socket
+    """Who ran it and on what: `uname -a` without the node name, which is a name."""
+    import platform
 
+    machine = platform.uname()
     return {
-        "hostname": socket.gethostname(),
+        "os": " ".join((machine.system, machine.release, machine.version, machine.machine)),
         "user": os.environ.get("USER") or os.environ.get("USERNAME"),
     }
 

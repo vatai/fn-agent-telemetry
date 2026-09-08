@@ -68,6 +68,17 @@ feedback binary, not `finalize()` directly — so the result carries tool activi
 at rating time and not only after `SessionEnd`; and a pending document faked
 back to schema 2 with no `tools` key ships as 3 with the field filled.
 
+No local path or machine name reaches a result. The document is scrubbed as it is
+written out (`scrub.py`, called from `session.py`): `session.cwd` is the project
+directory's name alone, paths under it become `$PROJECTS/<name>/...` so two
+checkouts of one project read alike, and anything else under the home directory
+becomes `$HOME/...` — in the collected texts too, not only the path fields, since
+an `AGENTS.md` cites paths of its own. The pending document keeps the real paths,
+which `resolve()` matches on and the skill and instruction lookups walk. `host`
+now reports `os` — `uname -a` minus the node name — in place of `hostname`, and
+`analysis/` has that column in its place, blank for results already written.
+Verified against a real result: no home path survives anywhere in it.
+
 One caveat stands: the corpus is too small, and too mixed in feedback vintage,
 to quote an aggregate from.
 

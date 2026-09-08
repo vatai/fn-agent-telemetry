@@ -156,7 +156,13 @@ way, a session that was never rated is not written out at any point.
 
 ## Document format
 
-One JSON object per session:
+One JSON object per session. No local path reaches it: `cwd` is the project
+directory's name alone, paths under the session's directory are written
+`$PROJECTS/<name>/...` so two checkouts of one project read alike, and anything
+else under the home directory is written `$HOME/...` -- in the texts too, not
+just the path fields. The pending document holds the real paths; `session.py`
+rewrites them on the way out (`scrub.py`), since the lookups need them until
+then.
 
 ```json
 {
@@ -164,10 +170,10 @@ One JSON object per session:
   "session": {
     "session_id": "610153d8-…",
     "agent": "claude-code",
-    "cwd": "/home/vatai/code/clanker-telemetry",
+    "cwd": "clanker-telemetry",
     "started": "2026-09-07T09:20:22.801751+00:00",
     "ended": "2026-09-07T09:31:04.113402+00:00",
-    "host": { "hostname": "niku", "user": "vatai" }
+    "host": { "os": "Linux 7.1.9-arch1-2 #1 SMP … x86_64", "user": "vatai" }
   },
   "skills": [{ "name": "code-review", "source": "listing", "text": "Review the current diff…",
                "uses": 0 }],
@@ -175,7 +181,7 @@ One JSON object per session:
   "usage": [{ "message_id": "msg_01…", "model": "claude-opus-5", "input": 2,
               "output": 452, "reasoning": 276, "cache_read": 129339, "cache_write": 974 }],
   "cost_usd": 4.13,
-  "context": [{ "path": "/home/vatai/code/clanker-telemetry/AGENTS.md",
+  "context": [{ "path": "$PROJECTS/clanker-telemetry/AGENTS.md",
                 "names": ["…/AGENTS.md", "…/CLAUDE.md"], "text": "# fn-agent-telemetry…" }],
   "feedback": { "subject": "…", "fom": "hours_saved", "scale": {}, "value": 6,
                 "satisfaction": 5, "satisfaction_scale": {}, "comment": null,
