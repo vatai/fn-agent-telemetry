@@ -80,7 +80,10 @@ now reports `os` — `uname -a` minus the node name — in place of `hostname`, 
 also carries `email`, resolved at write-out by `identity.py`: Claude Code's
 signed-in account from its own config, else the git `user.email` as it reads in
 the project, else the git `user.name`, else `user@hostname` — the one place a
-hostname is still worth having. Verified down all four rungs.
+hostname is still worth having. Verified down all four rungs. A `context` entry reports the file as it was
+loaded — `os.path.abspath`, not `realpath` — so a `CLAUDE.md` symlinked out of
+the tree no longer reports where it points; the realpath stays the dedup key, so
+an `AGENTS.md`/`CLAUDE.md` pair is still one entry under both names.
 Verified against a real result: no home path survives anywhere in it.
 
 One caveat stands: the corpus is too small, and too mixed in feedback vintage,

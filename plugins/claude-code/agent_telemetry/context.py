@@ -8,7 +8,9 @@ names -- which differ per agent, so the adapters say where they are.
 The two names are frequently one file -- a repo that keeps `AGENTS.md` and
 symlinks `CLAUDE.md` to it is the common arrangement, and this repo is one -- so
 entries are keyed by the resolved file and record every name that reached it,
-rather than storing the same text twice.
+rather than storing the same text twice. The key is not what is reported: a
+`path` is the file as it was loaded, since where a link happens to point is a
+detail of one machine's filesystem, not of the session.
 """
 
 import os
@@ -29,10 +31,15 @@ def collect(cwd, user_dirs=()):
             if entry is None:
                 text = _read(candidate)
                 if text is not None:
-                    found[key] = {"path": key, "names": [candidate], "text": text}
+                    found[key] = _entry(candidate, text)
             elif candidate not in entry["names"]:
                 entry["names"].append(candidate)
     return list(found.values())
+
+
+def _entry(candidate, text):
+    """A file as it was loaded, not as a link resolves: `path` is an abspath."""
+    return {"path": os.path.abspath(candidate), "names": [candidate], "text": text}
 
 
 def _directories(cwd, user_dirs):
