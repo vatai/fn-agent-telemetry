@@ -164,6 +164,15 @@ just the path fields. The pending document holds the real paths; `session.py`
 rewrites them on the way out (`scrub.py`), since the lookups need them until
 then.
 
+`host.email` is resolved at the same point, by `identity.py`, descending until
+something answers: the account Claude Code is signed in as, read from its own
+`~/.claude.json`; else git's `user.email` as it reads in the project, so a
+per-repo identity wins; else git's `user.name`, when a name is configured but no
+address; else `user@hostname`. Only Claude Code has an account to read, so
+opencode always starts at the git rung. That last rung is the one place a
+hostname is still recorded, there being nothing else left to tell two users
+apart.
+
 ```json
 {
   "schema_version": 3,
@@ -173,7 +182,8 @@ then.
     "cwd": "clanker-telemetry",
     "started": "2026-09-07T09:20:22.801751+00:00",
     "ended": "2026-09-07T09:31:04.113402+00:00",
-    "host": { "os": "Linux 7.1.9-arch1-2 #1 SMP … x86_64", "user": "vatai" }
+    "host": { "os": "Linux 7.1.9-arch1-2 #1 SMP … x86_64", "user": "vatai",
+              "email": "emil.vatai@riken.jp" }
   },
   "skills": [{ "name": "code-review", "source": "listing", "text": "Review the current diff…",
                "uses": 0 }],

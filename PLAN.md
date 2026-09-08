@@ -76,7 +76,11 @@ becomes `$HOME/...` — in the collected texts too, not only the path fields, si
 an `AGENTS.md` cites paths of its own. The pending document keeps the real paths,
 which `resolve()` matches on and the skill and instruction lookups walk. `host`
 now reports `os` — `uname -a` minus the node name — in place of `hostname`, and
-`analysis/` has that column in its place, blank for results already written.
+`analysis/` has that column in its place, blank for results already written. It
+also carries `email`, resolved at write-out by `identity.py`: Claude Code's
+signed-in account from its own config, else the git `user.email` as it reads in
+the project, else the git `user.name`, else `user@hostname` — the one place a
+hostname is still worth having. Verified down all four rungs.
 Verified against a real result: no home path survives anywhere in it.
 
 One caveat stands: the corpus is too small, and too mixed in feedback vintage,

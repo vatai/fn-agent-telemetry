@@ -11,7 +11,18 @@ document stays in `.pending/`, holding no conversation either way.
 
 import os
 
-from . import SCHEMA_VERSION, adapters, context, document, paths, scrub, skills, tools, usage
+from . import (
+    SCHEMA_VERSION,
+    adapters,
+    context,
+    document,
+    identity,
+    paths,
+    scrub,
+    skills,
+    tools,
+    usage,
+)
 
 # Bookkeeping, not collected data: where to find the agent's own record. Kept in
 # the pending document so `/fn-eval` and the end-of-session pass can find it,
@@ -93,6 +104,7 @@ def _finalize(session_id, agent):
     if doc is None or not document.rated(doc):
         return None
     _fill(doc, agent)
+    _identify(doc, agent)
     # A document that has been pending since an older version was collected by
     # this one, so it is stamped for the shape it is written in, not the shape
     # it was started in.
@@ -123,6 +135,14 @@ def _shipped_session(session):
     if not cwd:
         return session
     return session | {"cwd": os.path.basename(os.path.normpath(cwd))}
+
+
+def _identify(doc, agent):
+    """Whose session it was. Looked up once and kept, since it cannot change."""
+    session = doc.setdefault("session", {})
+    host = session.setdefault("host", {})
+    if not host.get("email"):
+        host["email"] = identity.of(agent, session.get("cwd"))
 
 
 def _user_instruction_dirs(agent):
