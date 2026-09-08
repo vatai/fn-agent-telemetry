@@ -2,7 +2,9 @@
 
 Two formats sit side by side, and which one a file is decides how it is read.
 A `.json` document is the current form: skills, per-message usage, cost, the
-`AGENTS.md`/`CLAUDE.md` in effect, and the rating, with no conversation in it.
+`AGENTS.md`/`CLAUDE.md` in effect, which tools ran and how often, and the
+rating, with no conversation in it -- tool activity is names and counts, never
+an input or a result.
 A `.zip` is the old form, holding an event log and a copy of the whole
 transcript; those archives exist on other machines and some were already sent,
 so they are still read rather than abandoned -- but only for what a document
@@ -36,6 +38,9 @@ TOKEN_FIELDS = ("input", "output", "reasoning", "cache_read", "cache_write")
 # `reasoning` is the thinking part of `output`, not a sixth kind of token, so a
 # total that added it in would count it twice.
 BILLED_FIELDS = ("input", "output", "cache_read", "cache_write")
+# Blank rather than zero wherever tool activity was not collected: a document
+# written before schema 3, or an archive. "Ran no tools" is a different claim.
+TOOL_FIELDS = ("tools", "tool_calls", "tool_names", "skill_calls", "skills_used")
 FEEDBACK_FIELDS = (
     "subject", "fom", "value", "unit", "better", "scale",
     "satisfaction", "comment", "legacy_scale",
@@ -98,9 +103,30 @@ def _read_document(path):
         "context_files": len(doc.get("context") or []),
         "context_chars": sum(len(c.get("text") or "") for c in doc.get("context") or []),
     }
+    row.update(_tool_activity(doc))
     row.update(_totals(doc.get("usage") or [], doc.get("cost_usd")))
     row.update(_feedback(doc.get("feedback")))
     return row
+
+
+def _tool_activity(doc):
+    """Which tools ran and how often, and which of the skills were used."""
+    if "tools" not in doc:
+        return dict.fromkeys(TOOL_FIELDS)
+    ran = doc.get("tools") or []
+    used = [skill for skill in doc.get("skills") or [] if skill.get("uses")]
+    used.sort(key=lambda skill: (-skill["uses"], skill.get("name") or ""))
+    return {
+        "tools": len(ran),
+        "tool_calls": sum(tool.get("calls") or 0 for tool in ran),
+        "tool_names": _counted(ran, "name", "calls"),
+        "skill_calls": sum(skill["uses"] for skill in used),
+        "skills_used": _counted(used, "name", "uses"),
+    }
+
+
+def _counted(entries, name, count):
+    return ", ".join(f"{entry.get(name)} {entry.get(count)}" for entry in entries)
 
 
 # --- the old form: a zip of an event log and a transcript --------------------
@@ -131,6 +157,7 @@ def _read_archive(path):
         "context_files": None,
         "context_chars": None,
     }
+    row.update(dict.fromkeys(TOOL_FIELDS))
     rows, cost = _v1_usage(first.get("agent"), transcript)
     row.update(_totals(rows, cost))
     row.update(_feedback(_v1_feedback(events)))

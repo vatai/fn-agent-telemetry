@@ -11,7 +11,7 @@ document stays in `.pending/`, holding no conversation either way.
 
 import os
 
-from . import adapters, context, document, paths, skills, usage
+from . import SCHEMA_VERSION, adapters, context, document, paths, skills, tools, usage
 
 # Bookkeeping, not collected data: where to find the agent's own record. Kept in
 # the pending document so `/fn-eval` and the end-of-session pass can find it,
@@ -93,6 +93,10 @@ def _finalize(session_id, agent):
     if doc is None or not document.rated(doc):
         return None
     _fill(doc, agent)
+    # A document that has been pending since an older version was collected by
+    # this one, so it is stamped for the shape it is written in, not the shape
+    # it was started in.
+    doc["schema_version"] = SCHEMA_VERSION
     destination = paths.output_path(session_id, document.started_at(doc))
     if not destination:
         return None
@@ -122,9 +126,27 @@ def _fill(doc, agent):
         doc["usage"] = rows
     if cost is not None:
         doc["cost_usd"] = cost
+    ran, invoked = tools.from_claude_record(record)
+    if ran:
+        doc["tools"] = ran
     found = skills.collect(record, (doc.get("session") or {}).get("cwd"))
     if found:
-        doc["skills"] = found
+        doc["skills"] = _with_uses(found, invoked)
+
+
+def _with_uses(found, invoked):
+    """How often each available skill was actually invoked.
+
+    A skill invoked but absent from the listing would otherwise be lost, so it
+    is added with `invocation` as its source and no defining text.
+    """
+    listed = [skill | {"uses": invoked.get(skill["name"], 0)} for skill in found]
+    names = {skill["name"] for skill in found}
+    unlisted = sorted(name for name in invoked if name not in names)
+    return listed + [
+        {"name": name, "source": "invocation", "text": None, "uses": invoked[name]}
+        for name in unlisted
+    ]
 
 
 def _pending_by_recency():

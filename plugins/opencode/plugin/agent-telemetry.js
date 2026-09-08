@@ -3,13 +3,14 @@
  *
  * Only what is collected is sent. Prompts, tool calls and tool results are not
  * hooked at all -- not filtered downstream, simply never asked for -- so this
- * plugin spawns nothing on the hot path of a turn. Nothing is awaited and every
+ * plugin spawns nothing on the hot path of a turn. Which tools ran is counted
+ * from the messages read at the end of a turn, by name, never by argument. Nothing is awaited and every
  * failure is swallowed, so telemetry can never interrupt or slow a session.
  *
  * Three things have no Claude Code equivalent and are solved here. opencode
  * keeps its messages in a database rather than a record on disk, so at the end
  * of every turn they are read back over the SDK and handed to the shared Python
- * for their token counts and cost; the messages themselves are never stored. A
+ * for their token counts, cost and tool names; the messages are never stored. A
  * command has no ${CLAUDE_PLUGIN_ROOT} to resolve the feedback executable with,
  * so `shell.env` hands the shell tool one. And an installed copy of this plugin
  * has nothing in ~/.config/opencode/command, so /fn-eval is registered from the
@@ -31,7 +32,7 @@ const FN_EVAL = resolve(HERE, "../command/fn-eval.md")
 const PACKAGE_ROOT = resolve(HERE, "../../claude-code")
 
 // Lifecycle only. A compaction or an error says something about a session, but
-// neither is one of the five things collected, so neither is recorded.
+// neither is one of the six things collected, so neither is recorded.
 const RECORDED_EVENTS = new Set(["session.created", "session.deleted", "session.idle"])
 
 const FRONTMATTER = /^---\n([\s\S]*?)\n---\n/
@@ -69,8 +70,8 @@ const commandFrom = (path) => {
 export const AgentTelemetry = async ({ client, directory }) => {
   const record = (hook, payload) => feed("hook", [AGENT], { hook, directory, ...payload })
 
-  // The messages are read for their token counts and cost and are not kept;
-  // `agent_telemetry.messages` takes the numbers and discards the rest.
+  // The messages are read for their token counts, cost and tool names and are
+  // not kept; `agent_telemetry.messages` takes those and discards the rest.
   const reportUsage = async (sessionID) => {
     if (!sessionID) return
     const messages = await client.session.messages({ path: { id: sessionID } })

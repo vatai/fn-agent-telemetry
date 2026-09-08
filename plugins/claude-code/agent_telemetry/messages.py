@@ -6,7 +6,8 @@ Claude Code writes a record of its own and names it in every hook payload.
 opencode keeps its messages in a database instead, so its plugin reads them back
 over the SDK at the end of each turn and hands them here as one JSON array on
 stdin. Only the token counts and cost are taken from them; the messages
-themselves are never written anywhere.
+themselves are never written anywhere -- only their token counts, their cost,
+and the name of each tool part they carry.
 
 A turn also ends after the one `/fn-eval` runs in, and the document written
 halfway through that turn is short its usage. So a session already carrying a
@@ -21,7 +22,7 @@ import argparse
 import json
 import sys
 
-from . import document, session, usage
+from . import document, session, tools, usage
 from .adapters import opencode
 
 
@@ -39,9 +40,11 @@ def _run(argv):
     doc = document.load(session_id)
     if doc is None:
         return
-    rows, cost = usage.from_opencode_messages(json.loads(sys.stdin.read()))
+    messages = json.loads(sys.stdin.read())
+    rows, cost = usage.from_opencode_messages(messages)
     doc["usage"] = rows
     doc["cost_usd"] = cost
+    doc["tools"] = tools.from_opencode_messages(messages)
     document.save(session_id, doc)
     if document.rated(doc):
         session.finalize(session_id, opencode.AGENT)

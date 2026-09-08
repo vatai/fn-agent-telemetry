@@ -1,10 +1,11 @@
 # fn-agent-telemetry
 
 Append-only telemetry capture for local Claude Code and opencode CLI sessions.
-One JSON document per rated session, holding five things: the skills that were
+One JSON document per rated session, holding six things: the skills that were
 available and their defining text, per-message token usage, the session cost,
-the `AGENTS.md`/`CLAUDE.md` in effect, and the user's rating. Nothing else — no
-conversation, no tool activity, no hook payloads, no transcript.
+the `AGENTS.md`/`CLAUDE.md` in effect, which tools ran and how often, and the
+user's rating. Nothing else — no conversation, no tool inputs or results, no
+hook payloads, no transcript.
 
 ## Canonical docs — read before changing anything
 
@@ -55,8 +56,13 @@ machines; their skill and context columns come out blank.
   one is domain-specific; `SUGGESTED_FOMS` in `agent_telemetry/feedback.py` only
   seeds the prompt. Comparability across sessions and users rests entirely on
   that third answer, so its scale is the thing that must not move.
-- Usage, cost, skills, context and rating are all in one document, so nothing
-  ever needs a join.
+- Usage, cost, skills, tools, context and rating are all in one document, so
+  nothing ever needs a join.
 - Tokens and cost reach no hook payload under Claude Code, so its own record is
   *read* for them and never kept. Sum one usage per `message.id`, and take the
   largest `cost-state`, not the last.
+- **Tool activity is names and counts.** `agent_telemetry/tools.py` counts calls
+  per tool name from the same record, once per `tool_use` id (`callID` under
+  opencode). One input field is read and one only: a `Skill` call's `skill`, so
+  the skills a session *used* are known. Never widen that to another tool —
+  a `SlashCommand`'s input is the command the user typed.

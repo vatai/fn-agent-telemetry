@@ -8,11 +8,13 @@ consumed, and how the user rated it.
 
 - Observe local CLI sessions of both agents, interactive and non-interactive.
 - Install integrations in per-user agent configuration.
-- Collect only five things: the skills available to the session and their defining text;
+- Collect only six things: the skills available to the session and their defining text;
   per-message token usage; the session cost; the contents of the `AGENTS.md` and
-  `CLAUDE.md` instruction files in effect; and the user's rating.
-- Collect no conversation — no prompts, assistant output, tool inputs or outputs, tool
-  activity, or native hook payloads — and keep no copy of the session transcript.
+  `CLAUDE.md` instruction files in effect; which tools ran and how many times each; and
+  the user's rating.
+- Collect no conversation — no prompts, assistant output, tool inputs or outputs, or
+  native hook payloads — and keep no copy of the session transcript. Tool activity is
+  names and counts, plus the skill named by a `Skill` call, and nothing else.
 - Record the user's own rating: a figure of merit of their choosing, and one fixed 1-5
   normalisation of it that compares across sessions and users.
 - Retain results indefinitely under `AGENT_TELEMETRY_DIR`, as one JSON file per *rated*
@@ -24,7 +26,7 @@ consumed, and how the user rated it.
 
 How each piece works is in `dev-notes.md`; this is what is left to do.
 
-**Built.** Both plugins collect the five things and nothing else, into one JSON
+**Built.** Both plugins collect the six things and nothing else, into one JSON
 document per rated session. A hook reads a payload for the session id, the
 working directory and the record path, then discards it — Claude Code now
 declares three hooks instead of nine, and opencode hooks no prompt, tool call or
@@ -36,9 +38,9 @@ it exists; `AGENTS.md` and `CLAUDE.md` are snapshotted whole at `SessionStart`.
 a rated session again so it carries the cost. `analysis/` reads the documents and
 still reads the old `.zip` archives.
 
-Verified against a real 1.2 MB session record: 97 usage rows and `$4.13`, both
-identical to what the old reader produced from the same session; 19 skills, one
-with a file on disk; the `AGENTS.md`/`CLAUDE.md` symlink stored once under both
+Verified against a real session record, now 2.9 MB: 318 usage rows and `$5.51`,
+both identical to what the old reader produced from the same session; 20 skills,
+one with a file on disk; the `AGENTS.md`/`CLAUDE.md` symlink stored once under both
 names; an unrated session produces nothing; unparseable and empty stdin are
 dropped exiting 0; and a `PreToolUse` payload's command string reaches no file.
 
@@ -47,6 +49,24 @@ opencode user's global `AGENTS.md` (in `$XDG_CONFIG_HOME/opencode`, not
 `~/.claude`) was never collected. Verified with both agents against the same
 project: opencode collects the opencode global file, `~/.claude/CLAUDE.md` — which
 it also loads — and the project file; Claude Code collects the latter two only.
+
+Tool activity is the sixth thing, added after the first five: `tools.py` counts
+calls per tool name from the record already read for usage, once per `tool_use`
+id under Claude Code and once per `callID` under opencode, and attaches a `uses`
+count to each skill so the skills a session *used* are distinguishable from the
+ones it merely had. One input field is read and one only — a `Skill` call's
+`skill`. Schema is now 3, stamped as the document is written out rather than as it was
+started, so a session pending since the previous version ships as what it is; a
+document without the field reads back blank rather than zero, since "not
+collected" is not "ran no tools". Verified on the same
+2.9 MB record: 259 calls over four tools, identical whether deduped or not, with
+usage, cost and skills unchanged; on a second session, 107 calls over six tools
+with the one `Skill` call attributed to `fn-claude-telemetry:fn-eval`; and
+`analysis/report.py` renders v3, v2 and `.zip` rows side by side, the older two
+blank in the tool columns. Verified through the real `/fn-eval` path too — the
+feedback binary, not `finalize()` directly — so the result carries tool activity
+at rating time and not only after `SessionEnd`; and a pending document faked
+back to schema 2 with no `tools` key ships as 3 with the field filled.
 
 One caveat stands: the corpus is too small, and too mixed in feedback vintage,
 to quote an aggregate from.

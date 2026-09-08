@@ -30,6 +30,7 @@ def blank(session_id, agent):
             "host": _host(),
         },
         "skills": [],
+        "tools": [],
         "usage": [],
         "cost_usd": None,
         "context": [],

@@ -13,16 +13,20 @@ Then it generates one JSON file in `$HOME/agent-telemetry` which should be
 uploaded to the URL which is provided separately. It is plain text — read it
 before you send it.
 
-It holds five things and nothing else:
+It holds six things and nothing else:
 
 - the **skills** that were available to the session, and the text defining them;
 - the **tokens** used, per reply;
 - what the session **cost**;
 - the **`AGENTS.md` and `CLAUDE.md`** files the agent was working under, in full;
+- which **tools** ran and how many times each — the tool's name and a count,
+  and for a skill the skill's name, so a session records which skills it used
+  and not only which it had;
 - your **three answers** above.
 
 It does not contain your prompts, the agent's replies, what any tool was given
-or returned, which tools ran at all, or any copy of the conversation.
+or returned, or any copy of the conversation. Of tool activity it keeps names
+and counts only: no command, no file, no argument, no result.
 
 Typically you'd invoke `/fn-eval` when finished with the session (and for
 technical reasons, you actually need to exit `claude` for the cost to be
@@ -35,6 +39,10 @@ recorded).
 ```sh
 claude plugin marketplace add https://github.com/vatai/fn-agent-telemetry.git
 claude plugin install fn-claude-telemetry@fn-agent-telemetry
+
+# To update later (restart Claude Code to apply):
+claude plugin marketplace update fn-agent-telemetry
+claude plugin update fn-claude-telemetry@fn-agent-telemetry
 ```
 
 Restart Claude Code, then check with `claude plugin details fn-claude-telemetry`
@@ -53,6 +61,9 @@ cat > ~/.config/opencode/opencode.json <<EOF
   "plugin": ["$HOME/.local/share/fn-agent-telemetry/plugins/opencode/plugin/agent-telemetry.js"]
 }
 EOF
+
+# To update later (restart opencode to apply):
+git -C ~/.local/share/fn-agent-telemetry pull
 ```
 
 Restart opencode; `/fn-eval` should appear in the command list.

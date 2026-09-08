@@ -11,7 +11,9 @@ cross-session aggregate is a group-by over the export rather than a mode here.
 `skills` is how many the session had available, with the number whose defining
 text was found on disk in brackets -- most skills are built into the CLI and have
 only their one-line description. `ctx` is how many `AGENTS.md`/`CLAUDE.md` files
-were in effect.
+were in effect. `tools` is how many tool calls the session made, over how many
+distinct tools; which tools they were, and how often each skill was invoked, are
+columns of the `csv` and `json` exports rather than of the table.
 
 The `fom` column is that session's own figure of merit and unit, which do not
 compare across sessions; `sat` is the 1-5 normalisation of it that does. A value
@@ -20,8 +22,9 @@ means none was recorded, which is not a zero. Tokens are split the way they are
 charged: `in`, `cache r`, `cache w` and `out` add up to `total`, while `think` is
 the thinking part of `out` and so is already inside it.
 
-A row from a `.zip` predates skill and context collection, so those columns are
-blank for it; `archives.py` explains why those archives are still read.
+A row from a `.zip` predates skill, context and tool collection, so those columns
+are blank for it -- as the tool columns are for any document written before they
+were collected, blank meaning uncollected where a `0` would mean no tool ran; `archives.py` explains why those archives are still read.
 """
 
 import argparse
@@ -39,6 +42,7 @@ COLUMNS = (
     ("msgs", lambda row: str(row["messages"])),
     ("skills", lambda row: _skills(row)),
     ("ctx", lambda row: _number(row["context_files"])),
+    ("tools", lambda row: _tools(row)),
     ("in", lambda row: _tokens(row["input"])),
     ("cache r", lambda row: _tokens(row["cache_read"])),
     ("cache w", lambda row: _tokens(row["cache_write"])),
@@ -103,6 +107,13 @@ def _skills(row):
     if row["skills"] is None:
         return ""
     return f"{row['skills']} ({row['skills_with_text']})"
+
+
+def _tools(row):
+    """Calls made, over how many distinct tools."""
+    if row["tool_calls"] is None:
+        return ""
+    return f"{row['tool_calls']} ({row['tools']})"
 
 
 def _tokens(count):

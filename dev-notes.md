@@ -72,20 +72,23 @@ in `--comment`.
 
 ## What is collected
 
-Five things, and nothing else:
+Six things, and nothing else:
 
 | | |
 | - | - |
-| **skills** | every skill the session had available, and the text defining it |
+| **skills** | every skill the session had available, the text defining it, and how often it was used |
 | **usage** | tokens per assistant message |
 | **cost** | what the session cost |
 | **context** | the `AGENTS.md` and `CLAUDE.md` files in effect, whole |
+| **tools** | which tools ran, and how many times each |
 | **rating** | your three answers |
 
-No prompts, no assistant output, no tool inputs or results, no tool activity, no
-native hook payloads, and no copy of the conversation. A hook's payload is read
-for the session id, the working directory and where the agent keeps its own
-record, and is then discarded — it is never stored. That matters more than it
+No prompts, no assistant output, no tool inputs or results, no native hook
+payloads, and no copy of the conversation. Tool activity is names and counts:
+what a tool was given and what it returned are not read at all, save the one
+field named under [tools](#tools) below. A hook's payload is read for the
+session id, the working directory and where the agent keeps its own record, and
+is then discarded — it is never stored. That matters more than it
 sounds: a `Stop` payload carries the assistant's entire reply in
 `last_assistant_message`, so keeping payloads wholesale is how conversation gets
 collected by accident.
@@ -139,8 +142,8 @@ listings sort chronologically and re-running `/fn-eval` overwrites the result
 instead of adding a near-identical one. Timestamps _inside_ are UTC.
 
 A session's document is assembled over its life: the instructions it runs under
-are snapshotted at `SessionStart`, the rating arrives from `/fn-eval`, and usage
-and cost are read at the end. So a partial document accumulates in `.pending/`
+are snapshotted at `SessionStart`, the rating arrives from `/fn-eval`, and
+usage, cost and tool activity are read at the end. So a partial document accumulates in `.pending/`
 in the same shape and is written out to the result name once rated. Nothing is
 appended to — there is no event stream — so each change rewrites the document
 whole, staged and renamed into place, and an interrupted write can never replace
@@ -157,7 +160,7 @@ One JSON object per session:
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "session": {
     "session_id": "610153d8-…",
     "agent": "claude-code",
@@ -166,7 +169,9 @@ One JSON object per session:
     "ended": "2026-09-07T09:31:04.113402+00:00",
     "host": { "hostname": "niku", "user": "vatai" }
   },
-  "skills": [{ "name": "code-review", "source": "listing", "text": "Review the current diff…" }],
+  "skills": [{ "name": "code-review", "source": "listing", "text": "Review the current diff…",
+               "uses": 0 }],
+  "tools": [{ "name": "Bash", "calls": 198 }, { "name": "Edit", "calls": 32 }],
   "usage": [{ "message_id": "msg_01…", "model": "claude-opus-5", "input": 2,
               "output": 452, "reasoning": 276, "cache_read": 129339, "cache_write": 974 }],
   "cost_usd": 4.13,
@@ -186,8 +191,9 @@ before anything is written out, so no result names a local file.
 
 ### skills
 
-`source` is the file the text came from, or the string `listing` when there was
-no file and the text is the one-line description instead. Expect mostly
+`source` is the file the text came from, `listing` when there was no file and
+the text is the one-line description instead, or `invocation` for a skill that
+was used without appearing in any listing. Expect mostly
 `listing`: of nineteen skills available in a measured session, **one** had a file
 on disk, and it was a plugin's `commands/fn-eval.md` rather than a `SKILL.md`.
 The other eighteen are built into the CLI and have no file to read.
@@ -198,6 +204,24 @@ ones carrying additions when a plugin is installed mid-session — so the names 
 folded across all of them. Verified on three sessions: nineteen each, and the
 fold catches the one where a plugin arrived mid-way (18 + 1). opencode publishes
 no such listing, so its `skills` is empty.
+
+### tools
+
+Names and counts. `tools` is every tool the session called, most-called first,
+and `uses` on a skill is how many times that skill was invoked — the question
+"which skills were actually used" that the available list alone cannot answer.
+
+That count is the one place an input is read: a `Skill` call carries the name of
+the skill in its `input`, so `tools.py` takes that field and discards the rest.
+No other tool's input is looked at, deliberately — a `SlashCommand` carries the
+command line the user typed, and that is conversation.
+
+A call is counted once per `tool_use` id under Claude Code and once per `callID`
+under opencode, so a message rewritten as it grows cannot inflate the count.
+Verified on a 2.9 MB record: 259 calls over four tools, identical deduped and
+not. A subagent's tools are missing from both — they are written to a record of
+its own, which nothing opens. A skill invoked but absent from the listing is
+kept with `invocation` as its `source` and no text, rather than dropped.
 
 ### context
 
@@ -242,8 +266,10 @@ at all, so nothing is spawned on the hot path of a turn.
 
 **opencode's usage arrives over the SDK.** It keeps its messages in a database
 rather than a record on disk, so the plugin reads them back at the end of every
-turn and hands them to `agent_telemetry.messages`, which takes the token counts
-and the cost and stores none of the message content. That pass also rewrites the
+turn and hands them to `agent_telemetry.messages`, which takes the token counts,
+the cost and the name of each `tool` part, and stores none of the message
+content. Its skills carry no `uses`, since it publishes no listing to attach one
+to; a skill it ran shows up as whatever tool ran it. That pass also rewrites the
 document of a session already rated, because `/fn-eval` writes it in the middle
 of the turn it runs in.
 
@@ -274,8 +300,11 @@ not checked, because any figure of merit is accepted by design.
 ## Reading the results back
 
 [`analysis/`](analysis) is the read side: `archives.py` turns each result into one
-row — session, skills, usage, cost, context, rating — and `report.py` prints those
-rows as a table, CSV or JSON. Its `fom` column is that session's own figure and
+row — session, skills, usage, cost, context, tool activity, rating — and
+`report.py` prints those rows as a table, CSV or JSON. Its `tools` column is
+calls over distinct tools; the per-tool and per-skill counts are in the CSV and
+JSON exports. A document written before tool activity was collected leaves those
+columns blank rather than zero, which would claim no tool ran. Its `fom` column is that session's own figure and
 unit and does not compare across sessions; `sat` is the Q3 normalisation that
 does. It imports nothing from the plugins and no plugin install ships it; the
 file on disk is the interface between the two sides.

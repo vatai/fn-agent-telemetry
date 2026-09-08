@@ -15,8 +15,7 @@ resumed after one was written goes on to write another -- with absence meaning
 unknown rather than zero.
 """
 
-import json
-import os
+from . import jsonl
 
 FIELDS = ("input", "output", "reasoning", "cache_read", "cache_write")
 
@@ -24,7 +23,7 @@ FIELDS = ("input", "output", "reasoning", "cache_read", "cache_write")
 def from_claude_record(path):
     """Usage rows and cost from Claude Code's own transcript. Never copies it."""
     rows, costs, seen = [], [], set()
-    for record in _records(path):
+    for record in jsonl.records(path):
         if record.get("type") == "assistant":
             row = _claude_row(record)
             if row and row["message_id"] not in seen:
@@ -83,14 +82,3 @@ def _opencode_model(info):
     """Provider and model together: the same model id can come from either."""
     return "/".join(p for p in (info.get("providerID"), info.get("modelID")) if p)
 
-
-def _records(path):
-    """Yield the parsed records of a JSONL file, tolerating a half-written line."""
-    if not path or not os.path.isfile(path):
-        return
-    with open(path, encoding="utf-8", errors="replace") as handle:
-        for line in handle:
-            try:
-                yield json.loads(line)
-            except ValueError:
-                continue

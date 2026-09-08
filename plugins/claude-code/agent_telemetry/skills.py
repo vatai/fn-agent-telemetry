@@ -14,8 +14,9 @@ otherwise the one-line description the listing itself carries, with `source`
 saying which of the two you have.
 """
 
-import json
 import os
+
+from . import jsonl
 
 LISTING_TYPE = "skill_listing"
 
@@ -42,7 +43,7 @@ def _from_listing(path):
     stored, since storing it would put the entire listing in the document.
     """
     found = {}
-    for record in _records(path):
+    for record in jsonl.records(path):
         listing = record.get("attachment") or {}
         if listing.get("type") != LISTING_TYPE:
             continue
@@ -114,13 +115,3 @@ def _read(path):
     except OSError:
         return None
 
-
-def _records(path):
-    if not path or not os.path.isfile(path):
-        return
-    with open(path, encoding="utf-8", errors="replace") as handle:
-        for line in handle:
-            try:
-                yield json.loads(line)
-            except ValueError:
-                continue
