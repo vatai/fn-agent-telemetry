@@ -11,22 +11,7 @@ evaluate agents. The command invocation asks you 3 questions:
 
 Then it generates one JSON file in `$HOME/agent-telemetry` which should be
 uploaded to the URL which is provided separately. It is plain text — read it
-before you send it.
-
-It holds six things and nothing else:
-
-- the **skills** that were available to the session, and the text defining them;
-- the **tokens** used, per reply;
-- what the session **cost**;
-- the **`AGENTS.md` and `CLAUDE.md`** files the agent was working under, in full;
-- which **tools** ran and how many times each — the tool's name and a count,
-  and for a skill the skill's name, so a session records which skills it used
-  and not only which it had;
-- your **three answers** above.
-
-It does not contain your prompts, the agent's replies, what any tool was given
-or returned, or any copy of the conversation. Of tool activity it keeps names
-and counts only: no command, no file, no argument, no result.
+before you send it; see [what the file holds](#what-the-file-holds).
 
 Typically you'd invoke `/fn-eval` when finished with the session (and for
 technical reasons, you actually need to exit `claude` for the cost to be
@@ -86,3 +71,20 @@ FOM is a performance metric that characterises the performance of a problem, sys
 The `/fn-eval` first asks you to specify which FOM you want to report, and you
 can either choose from the suggestions or specify your own FOM; then it asks you
 to enter the FOM as a numerical value.
+
+## What the JSON file holds
+
+It holds six things and nothing else:
+
+- the **skills** that were available to the session, and the text defining them;
+- the **tokens** used, per reply;
+- what the session **cost**;
+- the **`AGENTS.md` and `CLAUDE.md`** files the agent was working under, in full;
+- which **tools** ran and how many times each — the tool's name and a count,
+  and for a skill the skill's name, so a session records which skills it used
+  and not only which it had;
+- your **three answers** to Q1-Q3.
+
+It does not contain your prompts, the agent's replies, what any tool was given
+or returned, or any copy of the conversation. Of tool activity it keeps names
+and counts only: no command, no file, no argument, no result.
