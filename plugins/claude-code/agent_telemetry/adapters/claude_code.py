@@ -9,6 +9,8 @@ conversation gets collected by accident.
 Reference for payload fields: https://docs.claude.com/en/docs/claude-code/hooks
 """
 
+import os
+
 AGENT = "claude-code"
 
 # The cost lands in the record only as the session ends, so a rated session is
@@ -20,6 +22,11 @@ _EVENT_TYPES = {
     "SessionEnd": "session_end",
     "Stop": "turn_end",
 }
+
+
+def user_instruction_dirs():
+    """Where this agent loads the user's own instructions from."""
+    return [os.path.join(os.path.expanduser("~"), ".claude")]
 
 
 def normalize(payload):

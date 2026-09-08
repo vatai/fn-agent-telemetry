@@ -2,7 +2,8 @@
 
 Collected whole, deliberately: they are what the agent was told to do, which is
 the point of having them. Taken from the working directory, the directories above
-it that an agent would also load, and the user-level `~/.claude`.
+it that an agent would also load, and the user-level directories the caller
+names -- which differ per agent, so the adapters say where they are.
 
 The two names are frequently one file -- a repo that keeps `AGENTS.md` and
 symlinks `CLAUDE.md` to it is the common arrangement, and this repo is one -- so
@@ -15,10 +16,10 @@ import os
 NAMES = ("AGENTS.md", "CLAUDE.md")
 
 
-def collect(cwd):
+def collect(cwd, user_dirs=()):
     """`[{path, names, text}]`, one entry per distinct file, outermost first."""
     found = {}
-    for directory in _directories(cwd):
+    for directory in _directories(cwd, user_dirs):
         for name in NAMES:
             candidate = os.path.join(directory, name)
             if not os.path.isfile(candidate):
@@ -34,9 +35,9 @@ def collect(cwd):
     return list(found.values())
 
 
-def _directories(cwd):
+def _directories(cwd, user_dirs):
     """User level first, then every directory from the filesystem root down to `cwd`."""
-    directories = [os.path.join(os.path.expanduser("~"), ".claude")]
+    directories = list(user_dirs)
     if not cwd:
         return directories
     chain, current = [], os.path.abspath(cwd)

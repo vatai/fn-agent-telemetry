@@ -203,7 +203,9 @@ no such listing, so its `skills` is empty.
 
 `AGENTS.md` and `CLAUDE.md` are collected whole, deliberately: they are what the
 agent was told to do. Taken from the working directory, the directories above it,
-and `~/.claude`. The two names are frequently one file — this repo keeps
+and the user-level directories the agent's own adapter names — `~/.claude` under
+Claude Code, and under opencode both `~/.config/opencode` and `~/.claude` (see
+below). The two names are frequently one file — this repo keeps
 `AGENTS.md` and symlinks `CLAUDE.md` to it — so entries are keyed by the resolved
 path and list every name that reached it, rather than storing the text twice.
 
@@ -228,7 +230,7 @@ real zero rather than a missing record.
 
 ## How the two plugins differ
 
-Everything below the adapter is shared. These four things are not.
+Everything below the adapter is shared. These six things are not.
 
 **Hooks are a module, not a subprocess.** Claude Code declares its hooks in
 `hooks.json` and runs an executable per event. opencode loads
@@ -244,6 +246,13 @@ turn and hands them to `agent_telemetry.messages`, which takes the token counts
 and the cost and stores none of the message content. That pass also rewrites the
 document of a session already rated, because `/fn-eval` writes it in the middle
 of the turn it runs in.
+
+**The user's instructions live somewhere else under opencode.** Claude Code
+loads them from `~/.claude`; opencode loads `AGENTS.md` from its own global
+config directory — `$XDG_CONFIG_HOME` or `~/.config`, then `opencode` — *and*
+`~/.claude/CLAUDE.md` on top of it, unless `disableClaudeCodePrompt` is set. So
+each adapter states its own `user_instruction_dirs()` and `context` collects
+those; hardcoding `~/.claude` silently dropped an opencode user's global file.
 
 **The opencode command ships inside the plugin.** A Claude Code plugin declares
 its commands as files and the installer places them. Nothing places a file for

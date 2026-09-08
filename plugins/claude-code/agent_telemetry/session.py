@@ -11,7 +11,7 @@ document stays in `.pending/`, holding no conversation either way.
 
 import os
 
-from . import context, document, paths, skills, usage
+from . import adapters, context, document, paths, skills, usage
 
 # Bookkeeping, not collected data: where to find the agent's own record. Kept in
 # the pending document so `/fn-eval` and the end-of-session pass can find it,
@@ -80,7 +80,7 @@ def _observe(agent, normalized, finalize_at_end):
         ended=event in ("session_end", "turn_end"),
     )
     if event == "session_start" or not doc.get("context"):
-        doc["context"] = context.collect(doc["session"].get("cwd"))
+        doc["context"] = context.collect(doc["session"].get("cwd"), _user_instruction_dirs(agent))
     document.save(session_id, doc)
 
     if event == "session_end" and finalize_at_end and document.rated(doc):
@@ -100,6 +100,12 @@ def _finalize(session_id, agent):
     document.write(destination, shipped)
     document.save(session_id, doc)
     return destination
+
+
+def _user_instruction_dirs(agent):
+    """The user-level instruction directories this agent reads. Empty if unknown."""
+    adapter = adapters.get_adapter(agent)
+    return getattr(adapter, "user_instruction_dirs", list)()
 
 
 def _fill(doc, agent):

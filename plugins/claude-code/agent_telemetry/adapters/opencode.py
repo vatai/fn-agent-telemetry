@@ -11,6 +11,8 @@ record path to report: its plugin reads usage back over the SDK and hands it to
 Reference for hook and event shapes: https://opencode.ai/docs/plugins/
 """
 
+import os
+
 AGENT = "opencode"
 
 # `session.deleted` is a session the user threw away, not one that finished, and
@@ -22,6 +24,18 @@ _EVENT_TYPES = {
     "session.deleted": "session_end",
     "session.idle": "turn_end",
 }
+
+
+def user_instruction_dirs():
+    """Where this agent loads the user's own instructions from.
+
+    Two directories, not one: opencode reads `AGENTS.md` from its own global
+    config directory -- `$XDG_CONFIG_HOME` or `~/.config`, then the app name --
+    *and* `~/.claude/CLAUDE.md`, unless `disableClaudeCodePrompt` turns the
+    latter off. Both are collected, since a session ran under both.
+    """
+    config = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    return [os.path.join(config, "opencode"), os.path.join(os.path.expanduser("~"), ".claude")]
 
 
 def normalize(payload):

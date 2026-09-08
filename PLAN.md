@@ -42,6 +42,12 @@ with a file on disk; the `AGENTS.md`/`CLAUDE.md` symlink stored once under both
 names; an unrated session produces nothing; unparseable and empty stdin are
 dropped exiting 0; and a `PreToolUse` payload's command string reaches no file.
 
+The user-level instruction directory is now per-agent, closing a gap where an
+opencode user's global `AGENTS.md` (in `$XDG_CONFIG_HOME/opencode`, not
+`~/.claude`) was never collected. Verified with both agents against the same
+project: opencode collects the opencode global file, `~/.claude/CLAUDE.md` — which
+it also loads — and the project file; Claude Code collects the latter two only.
+
 One caveat stands: the corpus is too small, and too mixed in feedback vintage,
 to quote an aggregate from.
 
