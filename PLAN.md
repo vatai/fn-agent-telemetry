@@ -84,7 +84,10 @@ hostname is still worth having. Verified down all four rungs. A `context` entry 
 loaded — `os.path.abspath`, not `realpath` — so a `CLAUDE.md` symlinked out of
 the tree no longer reports where it points; the realpath stays the dedup key, so
 an `AGENTS.md`/`CLAUDE.md` pair is still one entry under both names.
-Verified against a real result: no home path survives anywhere in it.
+Verified against a real result: no home path survives anywhere in it. Schema is
+4 and the plugins are 0.3.0: `host.hostname` is gone, `host.email` is new, and
+every path in a document reads differently, so a reader can tell the two shapes
+apart by the number rather than by sniffing a field.
 
 One caveat stands: the corpus is too small, and too mixed in feedback vintage,
 to quote an aggregate from.

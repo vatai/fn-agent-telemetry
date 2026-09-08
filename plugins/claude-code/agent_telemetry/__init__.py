@@ -7,4 +7,4 @@ often, and the user's rating. Tool activity is names and counts; no tool input
 or result is collected, no conversation, and no transcript is kept.
 """
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4

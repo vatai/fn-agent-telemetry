@@ -175,7 +175,7 @@ apart.
 
 ```json
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "session": {
     "session_id": "610153d8-…",
     "agent": "claude-code",
