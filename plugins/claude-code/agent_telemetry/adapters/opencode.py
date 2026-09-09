@@ -15,9 +15,10 @@ import os
 
 AGENT = "opencode"
 
-# `session.deleted` is a session the user threw away, not one that finished, and
-# the plugin has already refreshed usage at the end of every turn.
-FINALIZE_AT_SESSION_END = False
+# Nothing here: `session.deleted` is a session the user threw away rather than
+# one that finished, and the plugin has already refreshed usage and written a
+# rated session out at the end of every turn.
+FINALIZE_AT = ()
 
 _EVENT_TYPES = {
     "session.created": "session_start",

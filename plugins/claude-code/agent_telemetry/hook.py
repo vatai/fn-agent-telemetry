@@ -8,8 +8,10 @@ for its session id, working directory and record path, and is then discarded
 rather than stored. The process always exits 0 and never writes to stdout, so a
 telemetry failure can neither block nor alter an agent session.
 
-One hook does more than that. A session ending after it was rated is finalized,
-because the agent writes the session's cost only once the session is over.
+One hook does more than that. A session that has been rated is written out
+again at the events its adapter names -- the end of the session under Claude
+Code, which is when it writes the cost, and the end of every turn under codex,
+which accumulates usage as it goes.
 """
 
 import json
@@ -35,7 +37,7 @@ def _run(argv):
     payload = _read_payload()
     if payload is None:
         return
-    session.observe(agent, adapter.normalize(payload), adapter.FINALIZE_AT_SESSION_END)
+    session.observe(agent, adapter.normalize(payload))
 
 
 def _read_payload():

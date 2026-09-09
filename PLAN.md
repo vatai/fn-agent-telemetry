@@ -1,20 +1,21 @@
 # Goal
 
-Collect detailed local usage information from Claude Code and opencode CLI sessions,
-through each agent's native integrations: what the session was configured with, what it
-consumed, and how the user rated it.
+Collect detailed local usage information from Claude Code, codex and opencode CLI
+sessions, through each agent's native integrations: what the session was configured
+with, what it consumed, and how the user rated it.
 
 # Specification
 
-- Observe local CLI sessions of both agents, interactive and non-interactive.
+- Observe local CLI sessions of all three agents, interactive and non-interactive.
 - Install integrations in per-user agent configuration.
 - Collect only six things: the skills available to the session and their defining text;
-  per-message token usage; the session cost; the contents of the `AGENTS.md` and
-  `CLAUDE.md` instruction files in effect; which tools ran and how many times each; and
-  the user's rating.
+  per-message token usage; the session cost, from the agents that report one; the
+  contents of the `AGENTS.md` and `CLAUDE.md` instruction files in effect; which tools
+  ran and how many times each; and the user's rating.
 - Collect no conversation — no prompts, assistant output, tool inputs or outputs, or
   native hook payloads — and keep no copy of the session transcript. Tool activity is
-  names and counts, plus the skill named by a `Skill` call, and nothing else.
+  names and counts, plus the skill named by a `Skill` call where the agent names one,
+  and nothing else.
 - Record the user's own rating: a figure of merit of their choosing, and one fixed 1-5
   normalisation of it that compares across sessions and users.
 - Retain results indefinitely under `AGENT_TELEMETRY_DIR`, as one JSON file per *rated*
@@ -26,7 +27,7 @@ consumed, and how the user rated it.
 
 How each piece works is in `dev-notes.md`; this is what is left to do.
 
-**Built.** Both plugins collect the six things and nothing else, into one JSON
+**Built.** Each plugin collects the six things and nothing else, into one JSON
 document per rated session. A hook reads a payload for the session id, the
 working directory and the record path, then discards it — Claude Code now
 declares three hooks instead of nine, and opencode hooks no prompt, tool call or
@@ -88,6 +89,52 @@ Verified against a real result: no home path survives anywhere in it. Schema is
 4 and the plugins are 0.3.0: `host.hostname` is gone, `host.email` is new, and
 every path in a document reads differently, so a reader can tell the two shapes
 apart by the number rather than by sniffing a field.
+
+**Codex is the third agent,** collected through its own hooks. Its payload
+carries the same four lifecycle fields as Claude Code's, so the adapter is
+nearly the same one; below it, everything is shared as before. What codex needed
+of its own is this. Its `token_count` events carry the
+session's counts cumulatively, so a usage row is what they grew by — which also
+drops the snapshot an aborted turn repeats — and its `input_tokens` includes the
+cached tokens, so both cached kinds come out of `input`. It reports no cost
+anywhere, so `cost_usd` stays `null` and the read side leaves the column blank
+rather than showing a zero. And it names no skill in a tool call, so its skills
+carry no `uses` at all, absent being the honest answer where `0` would claim the
+skills went unused; `analysis/` now blanks `skill_calls` for any document that
+counts none, which changes opencode rows the same way. Skills come from the
+`host_skills` body of a `world_state` record, whose file references make codex
+the one agent whose skills mostly do have their defining text on disk.
+`FINALIZE_AT` on each adapter replaced the old boolean: codex writes a rated
+session out at the end of every turn as well as at `SessionEnd`, both because
+its usage accumulates as the session runs and because `SessionEnd` is a hook
+codex allows one second by default and three at most.
+
+Schema stays 4: a codex document is the same shape, and `session.agent` is how a
+reader tells it apart — a `null` cost and a skill with no `uses` are the
+document saying what codex cannot report, not a new format. The plugins are
+0.4.0. Codex is installed by clone and hook config rather than as a codex
+plugin, because a marketplace install copies the plugin directory alone and the
+shared Python lives outside it — the same constraint opencode already has — and
+`/fn-eval` ships as a skill, invoked `$fn-eval`, codex having deprecated the
+custom prompts that would have been a slash command.
+
+Verified against every codex rollout on this machine (22 of them): each
+session's summed usage rows equal the count codex itself ended on, the session
+that repeated a snapshot coming out at 28 rows rather than 29; tool calls are
+counted once per `call_id` over both call shapes; six skills read their text
+off disk, and a rollout old enough to carry no listing yields none. Verified
+through the wrappers rather than the Python: a `SessionStart` payload naming a
+rollout that does not exist still finds the record by session id, and so does
+one naming a rollout that exists but belongs to another session — a decoy at the
+`<project>/.codex/rollout.jsonl` path codex's own documentation shows, which
+would otherwise have been read as this session's usage. `/fn-eval`'s own binary
+writes the result, a `Stop` payload rewrites it, and no home path, decoy path or
+cost survives in it — while the Claude Code path re-run on a real record still
+produces its 150 usage rows, its tool counts and its `uses` per skill.
+Finalizing measured ~90 ms against the largest rollout here. What is *not*
+verified: codex firing the hooks itself, which needs an interactive
+`/hooks` trust step, so every payload above was fabricated to the documented
+shape rather than received.
 
 One caveat stands: the corpus is too small, and too mixed in feedback vintage,
 to quote an aggregate from.

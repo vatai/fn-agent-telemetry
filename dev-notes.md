@@ -6,7 +6,7 @@ Hooks note that a session exists, with nothing to run. To produce its result,
 run this once before you leave it:
 
 ```
-/fn-eval
+/fn-eval          # $fn-eval under codex, where it is a skill and not a command
 ```
 
 The agent proposes what the session should be judged on, then asks three
@@ -34,14 +34,14 @@ therefore bounded only below, while Q3 is validated properly — it is the one
 field that compares across sessions and users.
 
 Each question is worded from the answer before it, which is why they are asked
-separately. Claude Code asks all three as `AskUserQuestion` menus. opencode has
-no such tool, so it asks them in prose and the answers arrive as free text; the
-numbers are checked in Python either way, and an answer it rejects makes the
-command re-ask.
+separately. Claude Code asks all three as `AskUserQuestion` menus. Neither
+opencode nor codex has such a tool to reach for, so both ask in prose and the
+answers arrive as free text; the numbers are checked in Python either way, and
+an answer it rejects makes the command re-ask.
 
 ### Where the Q1 suggestions live
 
-The suggestion list is written out in four places, because a markdown prompt
+The suggestion list is written out in five places, because a markdown prompt
 cannot import Python and each agent reads its own prompt. Add a figure to all of
 them, or the agents offer different things:
 
@@ -50,6 +50,7 @@ them, or the agents offer different things:
 | `plugins/claude-code/agent_telemetry/feedback.py` | `SUGGESTED_FOMS` — the canonical list: name, unit, what it suits. Only `--help` reads it; nothing validates against it. |
 | `plugins/claude-code/commands/fn-eval.md`         | The step 2 table, offered as `AskUserQuestion` options.                                                                 |
 | `plugins/opencode/command/fn-eval.md`             | The step 2 table, offered in prose.                                                                                    |
+| `plugins/codex/skills/fn-eval/SKILL.md`           | The same table, offered in prose. A skill, not a command: codex installs no commands.                                  |
 | `README.md`, `## FOM: Figure of merit`            | The user-facing prose version, and where the list came from.                                                            |
 
 Nothing enforces agreement between them, since `--fom` accepts any name — a
@@ -58,13 +59,16 @@ list that has drifted produces valid but unevenly-prompted data, not an error.
 **Skip `/fn-eval` and you get nothing.** Rating is the only thing that produces
 a result. The document stays in `.pending/`, and under Claude Code the token
 counts and cost are lost once it prunes `~/.claude/projects`, since that record
-is where they live.
+is where they live. The same goes for codex, whose token counts live in
+`~/.codex/sessions`.
 
 **Then close the session — Claude Code only.** `/fn-eval` writes the document
 from inside the turn it runs in, and Claude Code records the session's cost only
 as the session ends. So the `SessionEnd` hook writes a rated session's document
 again. Rate and never exit, and the document has everything but the cost.
-opencode has no equivalent gap: it refreshes usage at the end of every turn.
+Neither of the others has that gap: opencode refreshes usage at the end of every
+turn, and so does codex — its `Stop` hook writes a rated session out again,
+which is also all there is to wait for, codex reporting no cost at any point.
 
 Q3's 1–5 scale is what keeps scores comparable across sessions and users, so it
 is fixed; Q1 is deliberately not. Anything the three numbers cannot express goes
@@ -78,9 +82,9 @@ Six things, and nothing else:
 | - | - |
 | **skills** | every skill the session had available, the text defining it, and how often it was used |
 | **usage** | tokens per assistant message |
-| **cost** | what the session cost |
+| **cost** | what the session cost, where the agent says — codex never does |
 | **context** | the `AGENTS.md` and `CLAUDE.md` files in effect, whole |
-| **tools** | which tools ran, and how many times each |
+| **tools** | which tools ran, and how many times each, and — under Claude Code alone — how often each skill was invoked |
 | **rating** | your three answers |
 
 No prompts, no assistant output, no tool inputs or results, no native hook
@@ -95,20 +99,21 @@ collected by accident.
 
 ## Options
 
-Both plugins need `python3` on `PATH`, and both read the same one setting:
+All three plugins need `python3` on `PATH`, and all three read the same one
+setting:
 
 ```sh
 export AGENT_TELEMETRY_DIR=~/somewhere-else          # optional; defaults to ~/agent-telemetry
 ```
 
-One plugin per agent, one document format for both. Everything below the adapter
-is shared — the same Python package, the same document, the same
-`AGENT_TELEMETRY_DIR` — so both agents' sessions land side by side in one
+One plugin per agent, one document format for all of them. Everything below the
+adapter is shared — the same Python package, the same document, the same
+`AGENT_TELEMETRY_DIR` — so every agent's sessions land side by side in one
 directory, and `session.agent` says which one produced it.
 
 ## Uploading
 
-Each run of `/fn-eval`, under either agent, leaves one file to send, in
+Each run of `/fn-eval`, under any of the agents, leaves one file to send, in
 `~/agent-telemetry` (or `$AGENT_TELEMETRY_DIR`):
 
 ```
@@ -151,8 +156,10 @@ a good document with half of one.
 
 Written at least twice in the ordinary case: once by `/fn-eval`, and once after
 it. For Claude Code that second pass is the `SessionEnd` hook, and it is what
-picks up the cost. For opencode it is the end of every subsequent turn. Either
-way, a session that was never rated is not written out at any point.
+picks up the cost. For opencode it is the end of every subsequent turn, and for
+codex the same, through its `Stop` hook; each adapter's `FINALIZE_AT` names the
+events it wants. Either way, a session that was never rated is not written out
+at any point.
 
 ## Document format
 
@@ -168,8 +175,9 @@ then.
 something answers: the account Claude Code is signed in as, read from its own
 `~/.claude.json`; else git's `user.email` as it reads in the project, so a
 per-repo identity wins; else git's `user.name`, when a name is configured but no
-address; else `user@hostname`. Only Claude Code has an account to read, so
-opencode always starts at the git rung. That last rung is the one place a
+address; else `user@hostname`. Only Claude Code has an account to read — codex
+keeps its own in the file that holds its credentials, which is not a file this
+reads — so the other two always start at the git rung. That last rung is the one place a
 hostname is still recorded, there being nothing else left to tell two users
 apart.
 
@@ -200,7 +208,11 @@ apart.
 ```
 
 `cost_usd` is absent or `null` when it could not be determined, which is not a
-zero. `feedback` is `null` in a pending document and always present in a result,
+zero — and always `null` under codex, which reports no cost anywhere. A codex
+document also differs in two smaller ways within the same schema: a usage row's
+`message_id` is `null`, codex attributing usage to a request rather than a
+message, and a skill carries no `uses` key at all, since nothing counts skill
+invocations there. `feedback` is `null` in a pending document and always present in a result,
 rating being what produces one. A pending document also carries `_record_path`,
 which is bookkeeping — where the agent keeps its own record — and is dropped
 before anything is written out, so no result names a local file.
@@ -221,6 +233,17 @@ folded across all of them. Verified on three sessions: nineteen each, and the
 fold catches the one where a plugin arrived mid-way (18 + 1). opencode publishes
 no such listing, so its `skills` is empty.
 
+Codex publishes one too, in the `host_skills` body of a `world_state` record:
+the same listing it showed the model, naming each skill's `SKILL.md` through a
+table of short roots (`` `r0` = `~/.codex/skills/.system` ``). So codex is the
+one agent whose skills mostly *do* have text on disk — six of six in a measured
+session, against one of nineteen under Claude Code. Two caveats come with it.
+Each body is the whole list rather than additions, so a later one wins per name
+and the union is still what was available. And the listing is what the session
+was *told* it had: codex shortens descriptions to fit a budget, and drops skills
+from a large enough set. A codex session old enough to predate the record
+carries no listing, and then `skills` is empty.
+
 ### tools
 
 Names and counts. `tools` is every tool the session called, most-called first,
@@ -230,22 +253,29 @@ and `uses` on a skill is how many times that skill was invoked — the question
 That count is the one place an input is read: a `Skill` call carries the name of
 the skill in its `input`, so `tools.py` takes that field and discards the rest.
 No other tool's input is looked at, deliberately — a `SlashCommand` carries the
-command line the user typed, and that is conversation.
+command line the user typed, and that is conversation. It exists under Claude
+Code only. Codex has no `Skill` tool to read — a skill there is invoked by name
+in a prompt, or read off disk — and what a codex call does carry is the shell
+command it ran, so no codex input is touched and no codex skill gets a `uses`.
+A `0` would have claimed the skill went unused rather than uncounted, which is
+why the key is absent instead.
 
-A call is counted once per `tool_use` id under Claude Code and once per `callID`
-under opencode, so a message rewritten as it grows cannot inflate the count.
-Verified on a 2.9 MB record: 259 calls over four tools, identical deduped and
-not. A subagent's tools are missing from both — they are written to a record of
-its own, which nothing opens. A skill invoked but absent from the listing is
-kept with `invocation` as its `source` and no text, rather than dropped.
+A call is counted once per `tool_use` id under Claude Code, once per `callID`
+under opencode and once per `call_id` under codex — over its `function_call` and
+`custom_tool_call` items both — so a record that repeats a call cannot inflate
+the count. Verified on a 2.9 MB Claude Code record: 259 calls over four tools,
+identical deduped and not. A subagent's tools are missing everywhere — they are
+written to a record of its own, which nothing opens. A skill invoked but absent
+from the listing is kept with `invocation` as its `source` and no text, rather
+than dropped.
 
 ### context
 
 `AGENTS.md` and `CLAUDE.md` are collected whole, deliberately: they are what the
 agent was told to do. Taken from the working directory, the directories above it,
 and the user-level directories the agent's own adapter names — `~/.claude` under
-Claude Code, and under opencode both `~/.config/opencode` and `~/.claude` (see
-below). The two names are frequently one file — this repo keeps
+Claude Code, `$CODEX_HOME` (`~/.codex`) under codex, and under opencode both
+`~/.config/opencode` and `~/.claude` (see below). The two names are frequently one file — this repo keeps
 `AGENTS.md` and symlinks `CLAUDE.md` to it — so entries are keyed by the resolved
 path and list every name that reached it, rather than storing the text twice.
 
@@ -268,12 +298,27 @@ opencode differs: its plugin receives `tokens` and `cost` per message over the
 SDK, so the numbers arrive already attributed and a `0` from a free model is a
 real zero rather than a missing record.
 
-## How the two plugins differ
+Codex differs in the other direction: it writes a `token_count` event carrying
+the whole session's counts **so far**, so a row is what they *grew by* since the
+event before it. Summing the `last_token_usage` each event also carries would
+over-count, for the same reason a per-record sum does under Claude Code: an
+aborted turn re-reports the previous snapshot. Verified across all 22 rollouts on
+one machine — every session's summed rows equal the count codex itself ended on,
+and the session that re-reported a snapshot comes out at 28 rows rather than 29.
+Its `input_tokens` includes the cached tokens, unlike Claude Code's, so both
+cached kinds are taken out of `input`: a reader adds `input`, `cache_read` and
+`cache_write` and gets the total codex reports. Cost is the part codex simply
+does not have — its `rate_limits` say what a plan has left, not what a session
+spent — so a codex `cost_usd` is always `null`.
 
-Everything below the adapter is shared. These six things are not.
+## How the plugins differ
 
-**Hooks are a module, not a subprocess.** Claude Code declares its hooks in
-`hooks.json` and runs an executable per event. opencode loads
+Everything below the adapter is shared. These are not.
+
+**Hooks are a module, not a subprocess.** Claude Code and codex both declare
+their hooks in a `hooks.json` and run an executable per event — codex's payload
+carries the same `session_id`, `cwd`, `hook_event_name` and `transcript_path`,
+so its adapter is nearly Claude Code's. opencode loads
 `plugins/opencode/plugin/agent-telemetry.js` into its own process and calls
 exported functions, so the plugin is what spawns the shared Python — passing the
 same JSON on stdin, so the two capture paths converge immediately. It hooks only
@@ -289,8 +334,35 @@ to; a skill it ran shows up as whatever tool ran it. That pass also rewrites the
 document of a session already rated, because `/fn-eval` writes it in the middle
 of the turn it runs in.
 
+**Codex writes usage as it goes, and never writes a cost.** So a rated codex
+session is written out at the end of every turn rather than only at
+`SessionEnd`, which is what `FINALIZE_AT` on each adapter says. That also keeps
+finalizing off a hook codex gives one second by default and three at most:
+measured at ~90 ms against the largest rollout on this machine, but the
+`SessionEnd` entry still asks for `timeout: 3` rather than relying on the
+default.
+
+**Codex's record has to be found, not trusted.** Its docs call
+`transcript_path` explicitly not a stable interface, and their own example names
+a rollout inside the project rather than under the codex home. So the adapter
+uses that path only when it is really a file, and otherwise finds the rollout by
+the session id every one of their names ends with.
+
+**Codex has hooks nobody has trusted yet.** It refuses to run a hook until the
+user reviews it under `/hooks`, so a fresh install collects nothing at all until
+they do — which is worth saying in the install instructions, because the failure
+mode is silence.
+
+**Codex takes a skill where the others take a command.** Its custom prompts are
+deprecated in favour of skills, so `/fn-eval` ships as
+`plugins/codex/skills/fn-eval/SKILL.md` and is invoked `$fn-eval`. Two
+consequences: it is symlinked into `~/.codex/skills` rather than installed, so
+the skill resolves the feedback executable through its own file's real path; and
+`agents/openai.yaml` sets `allow_implicit_invocation: false`, since codex would
+otherwise be free to rate a session the user never asked to have rated.
+
 **The user's instructions live somewhere else under opencode.** Claude Code
-loads them from `~/.claude`; opencode loads `AGENTS.md` from its own global
+loads them from `~/.claude`; codex from `$CODEX_HOME`, or `~/.codex`; opencode loads `AGENTS.md` from its own global
 config directory — `$XDG_CONFIG_HOME` or `~/.config`, then `opencode` — *and*
 `~/.claude/CLAUDE.md` on top of it, unless `disableClaudeCodePrompt` is set. So
 each adapter states its own `user_instruction_dirs()` and `context` collects
@@ -307,8 +379,8 @@ defined themselves is left alone.
 hook exports `AGENT_TELEMETRY_BIN` into the shell tool's environment, and
 `/fn-eval` resolves the feedback executable through it.
 
-**There is no `AskUserQuestion` under opencode.** The three questions are asked
-in prose instead of as menus, so the answers arrive as free text. The numbers
+**There is no `AskUserQuestion` under opencode or codex.** The three questions
+are asked in prose instead of as menus, so the answers arrive as free text. The numbers
 are still checked in Python — Q2 as a number of 0 or more, Q3 as a whole number
 from 1 to 5 — and a rejected one exits non-zero so the command re-asks. Q1 is
 not checked, because any figure of merit is accepted by design.
@@ -320,7 +392,9 @@ row — session, skills, usage, cost, context, tool activity, rating — and
 `report.py` prints those rows as a table, CSV or JSON. Its `tools` column is
 calls over distinct tools; the per-tool and per-skill counts are in the CSV and
 JSON exports. A document written before tool activity was collected leaves those
-columns blank rather than zero, which would claim no tool ran. Its `fom` column is that session's own figure and
+columns blank rather than zero, which would claim no tool ran — and so does an
+agent that cannot answer: `skill_calls` and `skills_used` are blank for codex
+and opencode, and `cost` is blank for codex. Its `fom` column is that session's own figure and
 unit and does not compare across sessions; `sat` is the Q3 normalisation that
 does. It imports nothing from the plugins and no plugin install ships it; the
 file on disk is the interface between the two sides.
@@ -336,4 +410,4 @@ archive with the entire conversation in it cannot answer either question.
 [PLAN.md](PLAN.md) holds the goal, the specification, and what is left to do.
 [AGENTS.md](AGENTS.md) is the brief for agents changing this repo. The shared
 Python package lives at `plugins/claude-code/agent_telemetry/` and is used by
-**both** plugins — the path is historical, not a scope.
+**all three** plugins — the path is historical, not a scope.

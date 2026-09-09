@@ -1,6 +1,6 @@
 {
   "name": "fn-claude-telemetry",
   "description": "Append-only telemetry capture for local Claude Code CLI sessions.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "author": { "name": "Emil Vatai" }
 }

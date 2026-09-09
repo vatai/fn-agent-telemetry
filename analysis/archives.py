@@ -13,6 +13,11 @@ also carries, so the columns line up.
 Nothing here imports the plugins' `agent_telemetry` package. The file on disk is
 the interface between the two sides.
 
+A row says which agent produced it, and three do: Claude Code, codex and
+opencode. What is missing differs by agent rather than by format -- a codex
+document has no cost, codex reporting none, and neither it nor opencode counts
+how often a skill was invoked -- and those columns come out blank, not zero.
+
 Two rules survive from reading the old transcripts and still matter, because a
 v1 archive is read with them: Claude Code repeats a message's whole `usage` on
 every content-block record, so usage is summed one per `message.id`; and cost
@@ -115,12 +120,28 @@ def _tool_activity(doc):
     if "tools" not in doc:
         return dict.fromkeys(TOOL_FIELDS)
     ran = doc.get("tools") or []
-    used = [skill for skill in doc.get("skills") or [] if skill.get("uses")]
-    used.sort(key=lambda skill: (-skill["uses"], skill.get("name") or ""))
     return {
         "tools": len(ran),
         "tool_calls": sum(tool.get("calls") or 0 for tool in ran),
         "tool_names": _counted(ran, "name", "calls"),
+    } | _skill_uses(doc.get("skills") or [])
+
+
+def _skill_uses(skills):
+    """How often each skill was invoked, blank wherever nothing counted them.
+
+    Only Claude Code names the skill a tool call invoked, so a codex or opencode
+    document carries no `uses` on a skill at all -- and a `0` for those would
+    read as a session that used none of the skills it had, rather than one whose
+    agent cannot say which it used.
+    """
+    if not any("uses" in skill for skill in skills):
+        return {"skill_calls": None, "skills_used": None}
+    used = sorted(
+        (skill for skill in skills if skill.get("uses")),
+        key=lambda skill: (-skill["uses"], skill.get("name") or ""),
+    )
+    return {
         "skill_calls": sum(skill["uses"] for skill in used),
         "skills_used": _counted(used, "name", "uses"),
     }

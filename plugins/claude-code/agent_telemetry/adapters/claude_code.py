@@ -14,8 +14,9 @@ import os
 AGENT = "claude-code"
 
 # The cost lands in the record only as the session ends, so a rated session is
-# worth one more pass once it is over.
-FINALIZE_AT_SESSION_END = True
+# worth one more pass once it is over -- and only then, the record holding
+# nothing new until it is.
+FINALIZE_AT = ("session_end",)
 
 _EVENT_TYPES = {
     "SessionStart": "session_start",

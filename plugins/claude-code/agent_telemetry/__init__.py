@@ -1,4 +1,4 @@
-"""Telemetry for local Claude Code and opencode CLI sessions.
+"""Telemetry for local Claude Code, codex and opencode CLI sessions.
 
 Collects six things per rated session and nothing else: the skills that were
 available and their defining text, per-message token usage, the session cost,

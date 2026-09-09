@@ -22,6 +22,10 @@ means none was recorded, which is not a zero. Tokens are split the way they are
 charged: `in`, `cache r`, `cache w` and `out` add up to `total`, while `think` is
 the thinking part of `out` and so is already inside it.
 
+A blank is always something uncollected rather than a zero: a codex row has no
+cost because codex reports none, and neither codex nor opencode says how often a
+skill was invoked, so those columns are blank for them too.
+
 A row from a `.zip` predates skill, context and tool collection, so those columns
 are blank for it -- as the tool columns are for any document written before they
 were collected, blank meaning uncollected where a `0` would mean no tool ran; `archives.py` explains why those archives are still read.

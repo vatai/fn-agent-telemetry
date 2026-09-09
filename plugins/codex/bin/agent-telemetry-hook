@@ -1,0 +1,16 @@
+#!/usr/bin/env sh
+# Codex hook wrapper: run the shared telemetry hook for this agent.
+# Codex hook commands are plain shell, run from the session's directory, so this
+# resolves the shared agent_telemetry package from its own location rather than
+# from an environment variable. That package ships inside the Claude Code
+# plugin, whose installer copies only its own directory, so it is read from the
+# checkout -- which is why a codex hook must point at this file inside a
+# checkout and not at a copy of it.
+# Always exits 0 so telemetry can never interrupt a codex session.
+
+package_root=$(CDPATH= cd -- "$(dirname -- "$0")/../../claude-code" && pwd)
+
+PYTHONPATH="$package_root${PYTHONPATH:+:$PYTHONPATH}" \
+  python3 -m agent_telemetry.hook codex
+
+exit 0

@@ -2,8 +2,9 @@
 
 Nothing here is collected per event. A hook's only jobs are to note that the
 session exists, to snapshot the instructions it is running under while they are
-still the ones in force, and -- when the session ends having been rated -- to
-read the agent's own record for usage, cost and the skill listing.
+still the ones in force, and -- once the session has been rated, at the events
+its adapter names -- to read the agent's own record for usage, cost, tool
+activity and the skill listing.
 
 `/fn-eval` is still the only thing that produces output. Skip it and the
 document stays in `.pending/`, holding no conversation either way.
@@ -25,17 +26,26 @@ from . import (
 )
 
 # Bookkeeping, not collected data: where to find the agent's own record. Kept in
-# the pending document so `/fn-eval` and the end-of-session pass can find it,
-# and dropped before anything is written out, so no output names a local record.
+# the pending document so `/fn-eval` and the later passes can find it, and
+# dropped before anything is written out, so no output names a local record.
 RECORD_KEY = "_record_path"
 
 CLAUDE = "claude-code"
+CODEX = "codex"
+
+# What each agent's own record can be read for, and how. opencode keeps no
+# record to read: its plugin receives usage over the SDK and has already stored
+# it, and it publishes no skill listing at all.
+_RECORD_READERS = {
+    CLAUDE: (usage.from_claude_record, tools.from_claude_record, skills.from_claude_record),
+    CODEX: (usage.from_codex_record, tools.from_codex_record, skills.from_codex_record),
+}
 
 
-def observe(agent, normalized, finalize_at_end=False):
+def observe(agent, normalized):
     """Note one hook event against the session's document. Best-effort."""
     try:
-        return _observe(agent, normalized, finalize_at_end)
+        return _observe(agent, normalized)
     except Exception:
         return False
 
@@ -67,7 +77,7 @@ def resolve(cwd, agent):
     return None
 
 
-def _observe(agent, normalized, finalize_at_end):
+def _observe(agent, normalized):
     session_id = normalized.get("session_id")
     if not session_id:
         return False
@@ -94,7 +104,7 @@ def _observe(agent, normalized, finalize_at_end):
         doc["context"] = context.collect(doc["session"].get("cwd"), _user_instruction_dirs(agent))
     document.save(session_id, doc)
 
-    if event == "session_end" and finalize_at_end and document.rated(doc):
+    if event in _finalize_at(agent) and document.rated(doc):
         _finalize(session_id, agent)
     return True
 
@@ -145,6 +155,11 @@ def _identify(doc, agent):
         host["email"] = identity.of(agent, session.get("cwd"))
 
 
+def _finalize_at(agent):
+    """The events at which this agent's rated session is worth writing out."""
+    return getattr(adapters.get_adapter(agent), "FINALIZE_AT", ())
+
+
 def _user_instruction_dirs(agent):
     """The user-level instruction directories this agent reads. Empty if unknown."""
     adapter = adapters.get_adapter(agent)
@@ -152,33 +167,49 @@ def _user_instruction_dirs(agent):
 
 
 def _fill(doc, agent):
-    """Read the agent's own record for what only it knows. Never keeps it.
-
-    opencode has no such record to read: its plugin receives usage over the SDK
-    and has already stored it, and it publishes no skill listing at all.
-    """
-    if agent != CLAUDE:
+    """Read the agent's own record for what only it knows. Never keeps it."""
+    readers = _RECORD_READERS.get(agent)
+    if readers is None:
         return
-    record = doc.get(RECORD_KEY)
-    rows, cost = usage.from_claude_record(record)
+    read_usage, read_tools, read_skills = readers
+    record = _record_path(doc, agent)
+    rows, cost = read_usage(record)
     if rows:
         doc["usage"] = rows
     if cost is not None:
         doc["cost_usd"] = cost
-    ran, invoked = tools.from_claude_record(record)
+    ran, invoked = read_tools(record)
     if ran:
         doc["tools"] = ran
-    found = skills.collect(record, (doc.get("session") or {}).get("cwd"))
+    found = read_skills(record, (doc.get("session") or {}).get("cwd"))
     if found:
         doc["skills"] = _with_uses(found, invoked)
+
+
+def _record_path(doc, agent):
+    """Where the agent's record is: as its payload named it, or as it lays them out.
+
+    Only codex needs the second: it documents `transcript_path` as not a stable
+    interface, so its adapter finds the rollout by session id when the path in
+    the payload is not there.
+    """
+    given = doc.get(RECORD_KEY)
+    locate = getattr(adapters.get_adapter(agent), "locate_record", None)
+    return locate(given, (doc.get("session") or {}).get("session_id")) if locate else given
 
 
 def _with_uses(found, invoked):
     """How often each available skill was actually invoked.
 
+    `invoked` is None for an agent that cannot say -- codex names the skill in
+    no tool call -- and then no skill carries a `uses` at all, since a `0` there
+    would claim the skill went unused rather than uncounted.
+
     A skill invoked but absent from the listing would otherwise be lost, so it
     is added with `invocation` as its source and no defining text.
     """
+    if invoked is None:
+        return found
     listed = [skill | {"uses": invoked.get(skill["name"], 0)} for skill in found]
     names = {skill["name"] for skill in found}
     unlisted = sorted(name for name in invoked if name not in names)

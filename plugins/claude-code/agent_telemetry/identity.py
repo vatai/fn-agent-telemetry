@@ -1,10 +1,12 @@
 """Who the session belongs to, as an email address where one can be had.
 
 Claude Code knows the account it is signed in as, and that is the answer
-whenever it is there. Nothing else does, so the fallbacks descend: the git
-identity configured for the project, then the git name if no address is set,
-then the OS user at the machine's name -- the one place a hostname is still
-worth having, there being nothing else left to tell two users apart.
+whenever it is there. Nothing else readable does -- codex keeps its account in
+the file that holds its credentials, which is not a file this reads -- so the
+fallbacks descend: the git identity configured for the project, then the git
+name if no address is set, then the OS user at the machine's name -- the one
+place a hostname is still worth having, there being nothing else left to tell
+two users apart.
 
 Resolved once, when the document is written out, so a session that is never
 rated never has it looked up.

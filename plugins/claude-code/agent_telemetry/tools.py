@@ -8,10 +8,15 @@ is counted and the input discarded, the same way the record is read for usage
 and never kept. A `SlashCommand` call carries the typed command line in its
 input, which is conversation, so no input but a `Skill`'s is looked at.
 
-Claude Code writes a tool call as a `tool_use` block on an assistant record, and
-opencode as a `tool` part on a message. Both repeat: Claude Code rewrites a
+Claude Code writes a tool call as a `tool_use` block on an assistant record,
+opencode as a `tool` part on a message, and codex as a `function_call` or
+`custom_tool_call` item in its rollout. All repeat: Claude Code rewrites a
 message as it grows, the way it does for usage, so a block is counted once per
-block id and a part once per `callID`.
+block id, a part once per `callID`, and a codex item once per `call_id`.
+
+Only Claude Code names the skill a call invoked, so only it reports skill uses:
+codex has no `Skill` tool to read, and a codex call's own field would be the
+shell command it ran.
 
 A subagent's tools are not counted. They are written to a record of its own,
 which nothing here opens.
@@ -23,6 +28,10 @@ from . import jsonl
 
 SKILL_TOOL = "Skill"
 
+# The two shapes a codex rollout writes a tool call in: a function tool, and a
+# freeform one such as `exec` or `apply_patch`.
+CODEX_CALL_TYPES = ("function_call", "custom_tool_call")
+
 
 def from_claude_record(path):
     """`([{name, calls}], {skill: calls})` -- tools run, and skills invoked."""
@@ -33,6 +42,25 @@ def from_claude_record(path):
         if skill:
             skills[skill] += 1
     return _rows(calls), dict(skills)
+
+
+def from_codex_record(path):
+    """`([{name, calls}], None)` for codex's own rollout: no skill uses to report.
+
+    Two fields are read off a call, its name and its id, and nothing else: a
+    codex call carries what it ran in `input` or `arguments` -- the shell
+    command, the patch -- which is exactly what is never collected.
+    """
+    calls, seen = collections.Counter(), set()
+    for record in jsonl.records(path):
+        if record.get("type") != "response_item":
+            continue
+        item = record.get("payload") or {}
+        if item.get("type") not in CODEX_CALL_TYPES:
+            continue
+        if _unseen(seen, item.get("call_id")):
+            calls[item.get("name")] += 1
+    return _rows(calls), None
 
 
 def from_opencode_messages(messages):

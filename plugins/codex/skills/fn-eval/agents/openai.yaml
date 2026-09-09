@@ -1,0 +1,5 @@
+# Rating is the user's to ask for. Codex would otherwise be free to invoke this
+# skill whenever a session looked like it was being judged, and a rating the
+# user never asked for is not a rating.
+policy:
+  allow_implicit_invocation: false
