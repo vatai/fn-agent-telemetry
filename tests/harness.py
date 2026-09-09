@@ -62,6 +62,15 @@ class Sandboxed(unittest.TestCase):
         """One hook event, as the agent delivers it: a JSON payload on stdin."""
         return self._run([self._executable(plugin, HOOK)], json.dumps(payload), env)
 
+    def run_hook_at(self, plugin_dir, payload, env=None):
+        """The same hook, from a copy of a plugin taken out of the checkout."""
+        return self._run([os.path.join(plugin_dir, "bin", HOOK)], json.dumps(payload), env)
+
+    def run_feedback_at(self, plugin_dir, env=None, **answers):
+        """The same command, from such a copy."""
+        command = [os.path.join(plugin_dir, "bin", FEEDBACK), *options(answers)]
+        return self._run(command, "", env)
+
     def run_raw_hook(self, plugin, stdin, env=None):
         """The same hook, given stdin that is not a payload."""
         return self._run([self._executable(plugin, HOOK)], stdin, env)
@@ -109,6 +118,12 @@ class Sandboxed(unittest.TestCase):
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(text)
         return path
+
+    def copy_plugin(self, plugin):
+        """A plugin on its own, the way an installer that copies one would leave it."""
+        copied = os.path.join(self.root, "installed", plugin)
+        shutil.copytree(os.path.join(REPO, "plugins", plugin), copied)
+        return copied
 
     def claude_account(self, email=ACCOUNT_EMAIL):
         """Claude Code's own config, holding the account it is signed in as."""

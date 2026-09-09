@@ -12,6 +12,7 @@ its own location, the other relative to its own file only.
 import json
 import os
 
+import flows
 import harness
 import records
 
@@ -151,3 +152,31 @@ class CodexHook(harness.Sandboxed):
         run = self.run_raw_hook("codex", "not json at all")
         self.assertEqual((run.code, run.out), (0, ""))
         self.assertIsNone(self.pending(records.SESSION_ID))
+
+
+class APluginCopiedOutOfTheTree(harness.Sandboxed):
+    """The shared package ships inside the Claude Code plugin, so a copy of one
+    of the others taken on its own cannot import it -- the reason a codex
+    `hooks.json` has to point inside a checkout.
+
+    A hook must still not interrupt the session. `/fn-eval` is a command the
+    user typed, so it is allowed to fail loudly rather than claim it stored
+    something.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.copied = self.copy_plugin("codex")
+
+    def test_a_hook_that_cannot_find_the_package_still_exits_zero(self):
+        payload = records.codex_payload("SessionStart", self.project, None)
+        run = self.run_hook_at(self.copied, payload)
+        self.assertEqual(run.code, 0)
+        self.assertIsNone(self.pending(records.SESSION_ID))
+        self.assertEqual(self.results(), [])
+
+    def test_the_feedback_command_does_not_claim_to_have_stored_anything(self):
+        run = self.run_feedback_at(self.copied, **flows.ANSWERS)
+        self.assertNotEqual(run.code, 0)
+        self.assertNotIn("feedback recorded", run.out)
+        self.assertEqual(self.results(), [])

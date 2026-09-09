@@ -122,6 +122,14 @@ class ClaudeCodeFeedback(Rated):
         self.assertEqual(len(self.results()), 1)
         self.assertEqual(self.result()["feedback"]["satisfaction"], 2)
 
+    def test_a_turn_ending_writes_nothing_out(self):
+        """Claude Code's record holds nothing new until the session ends, which
+        is when the cost lands -- so `Stop` is not one of its `FINALIZE_AT`."""
+        first = self.result()["session"]["ended"]
+        payload = records.claude_payload("Stop", self.project, self.record)
+        self.assertEqual(self.run_hook("claude-code", payload).code, 0)
+        self.assertEqual(self.result()["session"]["ended"], first)
+
     def test_session_end_writes_a_rated_session_out_again(self):
         first = self.result()["session"]["ended"]
         payload = records.claude_payload("SessionEnd", self.project, self.record)
@@ -170,6 +178,16 @@ class CodexFeedback(Rated):
                 },
             ],
         )
+
+    def test_a_turn_ending_writes_a_rated_session_out_again(self):
+        """Codex's usage accumulates as the session runs and there is no cost to
+        wait for, so every turn's end is worth writing out -- and `SessionEnd`
+        is a hook it allows one second by default."""
+        first = self.result()["session"]["ended"]
+        payload = records.codex_payload("Stop", self.project, self.decoy)
+        self.assertEqual(self.run_hook("codex", payload).code, 0)
+        self.assertEqual(len(self.results()), 1)
+        self.assertGreater(self.result()["session"]["ended"], first)
 
     def test_the_identity_falls_back_to_git(self):
         self.assertEqual(self.result()["session"]["host"]["email"], harness.GIT_EMAIL)

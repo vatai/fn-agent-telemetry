@@ -139,7 +139,7 @@ shape rather than received.
 One caveat stands: the corpus is too small, and too mixed in feedback vintage,
 to quote an aggregate from.
 
-**There is a test suite,** `tests/`, run with `tests/run`: 79 tests, stdlib
+**There is a test suite,** `tests/`, run with `tests/run`: 83 tests, stdlib
 `unittest`, no dependency beyond `python3`. It runs the plugins the way their
 agents run them — each wrapper as an executable with one JSON payload on stdin,
 each shared entry point as `python3 -m` — inside a temporary `HOME`, project
@@ -157,13 +157,17 @@ What that buys: every field of a result asserted against a known input, for all
 three agents; the failure modes required to stay silent (unparseable stdin, an
 unknown agent, a telemetry directory that cannot be created) each exiting 0 with
 nothing written; the answers `/fn-eval` rejects, exiting 2 so the command
-re-asks; and one test that stands for the specification itself — every
-conversation-bearing field of every input carries the same sentinel string, and
-nothing under the telemetry directory may contain it. Verified by mutation:
-dropping the tool-call dedup fails 6 tests, dropping the path scrub fails 3, and
-storing a hook payload fails the sentinel scan. The read side runs too —
-`analysis/archives.py` reads results the binaries just wrote — which is the only
-check that the two sides agree on the document they share.
+re-asks; the per-agent asymmetry in `FINALIZE_AT`, where a turn ending writes a
+rated codex session out again and a Claude Code one not until `SessionEnd`; a
+plugin copied out of the checkout, which cannot import the shared package and
+whose hook must still exit 0; and one test that stands for the specification
+itself — every conversation-bearing field of every input carries the same
+sentinel string, and nothing under the telemetry directory may contain it. Verified by mutation:
+dropping the tool-call dedup fails 6 tests, dropping the path scrub fails 3,
+storing a hook payload fails the sentinel scan, and swapping the two adapters'
+`FINALIZE_AT` fails exactly the two tests that discriminate them. The read side
+runs too — `analysis/archives.py` reads results the binaries just wrote — which
+is the only check that the two sides agree on the document they share.
 
 Not covered, and deliberately: the opencode plugin's own JavaScript, which needs
 node and a live opencode SDK, so what is tested is the two module invocations it

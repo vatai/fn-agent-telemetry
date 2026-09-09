@@ -424,7 +424,7 @@ lookup, the identity resolved, and the paths scrubbed on the way out.
 | `tests/records.py` | The example inputs. Hand-built and small: each record stands for a rule above, not for a real session. `SENTINEL` marks every field that carries conversation. |
 | `tests/flows.py` | A whole rated session per agent, in the order the agent produces one. |
 | `tests/harness.py` | The sandbox, and the runners: `run_hook`, `run_feedback`, `run_module`. |
-| `tests/test_hook_binary.py` | What one hook event does, and the failure modes that must stay silent. |
+| `tests/test_hook_binary.py` | What one hook event does, the failure modes that must stay silent, and a plugin copied out of the checkout. |
 | `tests/test_feedback_binary.py` | `/fn-eval`: a whole result asserted per agent, and the answers it rejects. |
 | `tests/test_messages_module.py` | opencode's usage pass, the entry point with no record to read. |
 | `tests/test_no_conversation.py` | The sentinel scan: nothing written may contain it. |
