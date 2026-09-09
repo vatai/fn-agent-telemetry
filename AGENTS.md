@@ -41,6 +41,13 @@ reaches no plugin install. The document on disk is the interface between the two
 sides. It also still reads the old `.zip` archives, which exist on other
 machines; their skill and context columns come out blank.
 
+`tests/` runs both sides: `tests/run`, stdlib `unittest`, no dependency beyond
+`python3`. It drives the plugins the way their agents do — a wrapper with a
+payload on stdin, an entry point as `python3 -m` — in a temporary `HOME` and
+`AGENT_TELEMETRY_DIR`. Change what a plugin collects and the example inputs in
+`tests/records.py` are where to say what the new shape looks like; `dev-notes.md`
+has the file-by-file map.
+
 ## Invariants
 
 - **Telemetry never interrupts a session.** Best-effort, silent no-op on failure.

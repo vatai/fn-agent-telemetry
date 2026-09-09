@@ -139,6 +139,37 @@ shape rather than received.
 One caveat stands: the corpus is too small, and too mixed in feedback vintage,
 to quote an aggregate from.
 
+**There is a test suite,** `tests/`, run with `tests/run`: 79 tests, stdlib
+`unittest`, no dependency beyond `python3`. It runs the plugins the way their
+agents run them — each wrapper as an executable with one JSON payload on stdin,
+each shared entry point as `python3 -m` — inside a temporary `HOME`, project
+directory and `AGENT_TELEMETRY_DIR`, so a result cannot depend on the machine
+that ran the tests. The example inputs are in `tests/records.py`, small enough
+to read and each one standing for a rule rather than for a real session: a
+message written as two content-block records, a `cost-state` pair with the
+larger written first, a repeated `tool_use` id, a `Skill` call, a listing that a
+later one adds to, codex's cumulative snapshots including the repeat an aborted
+turn writes, and a decoy rollout at the path codex's own documentation shows.
+`tests/flows.py` holds the whole sequence each agent runs to produce a rated
+session, since two files need it.
+
+What that buys: every field of a result asserted against a known input, for all
+three agents; the failure modes required to stay silent (unparseable stdin, an
+unknown agent, a telemetry directory that cannot be created) each exiting 0 with
+nothing written; the answers `/fn-eval` rejects, exiting 2 so the command
+re-asks; and one test that stands for the specification itself — every
+conversation-bearing field of every input carries the same sentinel string, and
+nothing under the telemetry directory may contain it. Verified by mutation:
+dropping the tool-call dedup fails 6 tests, dropping the path scrub fails 3, and
+storing a hook payload fails the sentinel scan. The read side runs too —
+`analysis/archives.py` reads results the binaries just wrote — which is the only
+check that the two sides agree on the document they share.
+
+Not covered, and deliberately: the opencode plugin's own JavaScript, which needs
+node and a live opencode SDK, so what is tested is the two module invocations it
+makes; codex firing its hooks itself, which still needs an interactive `/hooks`
+trust step; and installation, there being no installer to test yet.
+
 1. **Decide what to do about `subject`.** It is the one piece of prose still
    collected, and the user never approves it: `fn-eval.md` step 1 is "Work out
    the subject yourself — do not ask", so the agent writes a description of the
@@ -157,6 +188,7 @@ to quote an aggregate from.
    hold whole conversations, and so do the `.pending/*.jsonl` event logs of every
    session that was never rated, which nothing has ever pruned.
 
-3. **Tests** for skill discovery and the listing fold, usage extraction against a
-   known record, context collection through a symlink, non-blocking failures, and
-   idempotent installation.
+3. **The tests the suite cannot reach yet.** Idempotent installation, which
+   waits on step 2 having an installer; and the opencode plugin's own
+   JavaScript, which would need node and a live SDK to drive its three hooks
+   rather than the two module invocations they make.

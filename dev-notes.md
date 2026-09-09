@@ -405,6 +405,42 @@ sent, so they are read for what a document also carries — usage, cost, rating 
 and their skill and context columns come out blank, which is the point: an
 archive with the entire conversation in it cannot answer either question.
 
+## Tests
+
+```sh
+tests/run                      # everything: stdlib unittest, python3 and nothing else
+tests/run test_hook_binary     # one module
+```
+
+They run the plugins the way the agents run them — a wrapper as an executable
+with one JSON payload on stdin, a shared entry point as `python3 -m` — inside a
+temporary `HOME`, project directory and `AGENT_TELEMETRY_DIR`. The child's
+environment is built rather than inherited, because `HOME` reaches four things
+that would otherwise leak into a result: the instructions collected, the skill
+lookup, the identity resolved, and the paths scrubbed on the way out.
+
+| File | What |
+| ---- | ---- |
+| `tests/records.py` | The example inputs. Hand-built and small: each record stands for a rule above, not for a real session. `SENTINEL` marks every field that carries conversation. |
+| `tests/flows.py` | A whole rated session per agent, in the order the agent produces one. |
+| `tests/harness.py` | The sandbox, and the runners: `run_hook`, `run_feedback`, `run_module`. |
+| `tests/test_hook_binary.py` | What one hook event does, and the failure modes that must stay silent. |
+| `tests/test_feedback_binary.py` | `/fn-eval`: a whole result asserted per agent, and the answers it rejects. |
+| `tests/test_messages_module.py` | opencode's usage pass, the entry point with no record to read. |
+| `tests/test_no_conversation.py` | The sentinel scan: nothing written may contain it. |
+| `tests/test_capture.py` | The rules on their own, for inputs a session cannot be built around. |
+| `tests/test_analysis_reads_a_result.py` | `analysis/` reading what the binaries just wrote — the only check that the two sides agree. |
+
+The sentinel test is the one that stands for the specification rather than for a
+function: every conversation-bearing field of every input holds the same string,
+and no byte under the telemetry directory may contain it. Storing a hook payload
+fails it, which is the accident it exists to catch.
+
+Three things are deliberately not covered. The opencode plugin's own JavaScript
+needs node and a live SDK, so what is tested is the two module invocations it
+makes. Codex firing its own hooks needs an interactive `/hooks` trust step.
+And installation has no installer to test.
+
 ## Repo layout and status
 
 [PLAN.md](PLAN.md) holds the goal, the specification, and what is left to do.

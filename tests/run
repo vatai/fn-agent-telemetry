@@ -1,0 +1,21 @@
+#!/usr/bin/env sh
+# Run the test suite. Stdlib only: python3 and nothing else.
+#
+#   tests/run                       # everything
+#   tests/run test_hook_binary      # one module
+#   tests/run test_capture.OutputNames.test_a_result_is_named_for_when_the_session_started
+#
+# PYTHONPATH carries the three things the tests import: the shared package, the
+# repo root for `analysis`, and the tests themselves. The plugin wrappers set
+# their own, which is part of what is being tested.
+
+cd -- "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)" || exit 1
+
+PYTHONPATH="plugins/claude-code:.:tests"
+export PYTHONPATH
+
+if [ "$#" -gt 0 ]; then
+  exec python3 -m unittest "$@"
+fi
+
+exec python3 -m unittest discover --start-directory tests
