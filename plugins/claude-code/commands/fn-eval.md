@@ -4,11 +4,18 @@ argument-hint: [what you were judging]
 allowed-tools: AskUserQuestion, Bash(${CLAUDE_PLUGIN_ROOT}/bin/agent-telemetry-feedback:*)
 ---
 
-Rate the current session. Exactly three questions, asked one at a time.
+Rate the current session. Exactly three questions and one confirmation, asked
+one at a time.
 
 **1. Work out the subject yourself — do not ask.** In a few words, name what this
 session should be judged on: the task the user set, not the tools you used. If
 arguments were given, use those verbatim instead: $ARGUMENTS
+
+Then draft the **summary**: 50 to 100 words on the type of work this session
+did — the kind of task, the domain, what was built, fixed, analysed or written,
+and how it went. Describe the work, not the conversation: no code, file paths,
+names of people or hosts, credentials, or anything the user marked private.
+Keep it to yourself for now; it is shown for approval after Q3.
 
 **2. Q1 — the figure of merit.** Call AskUserQuestion with one question and
 nothing else. In the question text, say in a sentence or two what a figure of
@@ -41,17 +48,25 @@ follow from Q1 and Q2: a 100× speedup is a 5, no change is a 3, and a slowdown
 is a 1. It is what makes sessions measured in different units comparable, which
 is why it is asked rather than worked out from the number.
 
-**5. Record it**, once all three answers are in hand and not before — the
-command requires every one of them:
+**5. Confirm the summary.** Call AskUserQuestion once more, with one question:
+show the summary from step 1 in full and say it will be stored in the file they
+share, then ask whether to store it as written. Offer two options, `Store as written`
+and `Make it more general` — the second meaning you rewrite it with less detail
+and ask again — and say they may type a replacement instead. Whatever they type
+replaces your draft verbatim. This is not a fourth question about the session;
+it is the user approving the one field you wrote.
+
+**6. Record it**, once all three answers and the approved summary are in hand
+and not before — the command requires every one of them:
 
 ```
-"${CLAUDE_PLUGIN_ROOT}/bin/agent-telemetry-feedback" --subject "<from step 1>" --fom <Q1> --unit "<Q1's unit, if any>" --value <Q2> --satisfaction <Q3>
+"${CLAUDE_PLUGIN_ROOT}/bin/agent-telemetry-feedback" --subject "<from step 1>" --summary "<as approved in step 5>" --fom <Q1> --unit "<Q1's unit, if any>" --value <Q2> --satisfaction <Q3>
 ```
 
 Omit `--unit` for a figure with no unit. If the user volunteered anything the
 numbers cannot express, add `--comment "..."`.
 
-**6.** Report the line it prints, then tell the user this, in your own words:
+**7.** Report the line it prints, then tell the user this, in your own words:
 the JSON file is written now, but Claude Code writes the session's cost only
 when it exits, so close this session for the cost to be recorded — the file is
 rewritten then. Do not use any other tools and do not do anything else.

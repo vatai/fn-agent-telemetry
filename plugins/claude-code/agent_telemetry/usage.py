@@ -19,6 +19,10 @@ Codex differs again: it writes the session's *cumulative* counts on every
 adds nothing. It reports no cost anywhere, so a codex session's cost is
 unknown -- its `rate_limits` are what a plan has left, not what a session
 spent.
+
+The rows are an intermediate form and never reach a document: `summarize`
+folds them into one total per model, which is what is written out. A row per
+message made a result unreadable and nothing on the read side used it.
 """
 
 from . import jsonl
@@ -27,6 +31,35 @@ FIELDS = ("input", "output", "reasoning", "cache_read", "cache_write")
 
 # Codex reports usage in an event of its own rather than on a message.
 CODEX_USAGE_EVENT = "token_count"
+
+
+def summarize(rows):
+    """The session's usage: how many messages, the peak context, totals per model.
+
+    A message's context is everything it was sent -- `input`, `cache_read` and
+    `cache_write` together, the same in all three agents once codex's cached
+    tokens are taken out of its input. Summed over a session that figure means
+    nothing, so the largest is kept instead. None when there are no rows, which
+    is uncollected rather than a session that used no tokens.
+    """
+    if not rows:
+        return None
+    by_model = {}
+    for row in rows:
+        model = row.get("model") or "unknown"
+        totals = by_model.setdefault(model, dict.fromkeys(("messages",) + FIELDS, 0))
+        totals["messages"] += 1
+        for field in FIELDS:
+            totals[field] += row.get(field) or 0
+    return {
+        "messages": len(rows),
+        "peak_context": max(_context(row) for row in rows),
+        "by_model": by_model,
+    }
+
+
+def _context(row):
+    return sum(row.get(field) or 0 for field in ("input", "cache_read", "cache_write"))
 
 
 def from_claude_record(path):

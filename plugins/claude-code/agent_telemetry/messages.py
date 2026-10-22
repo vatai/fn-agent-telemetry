@@ -42,7 +42,7 @@ def _run(argv):
         return
     messages = json.loads(sys.stdin.read())
     rows, cost = usage.from_opencode_messages(messages)
-    doc["usage"] = rows
+    doc["usage"] = usage.summarize(rows)
     doc["cost_usd"] = cost
     doc["tools"] = tools.from_opencode_messages(messages)
     document.save(session_id, doc)

@@ -128,11 +128,23 @@ def _finalize(session_id, agent):
 
 
 def _shipped(doc):
-    """The document as it is written out: no record path, and no local paths."""
+    """The document as it is written out: no record path, and no local paths.
+
+    Keys go out in `document.ORDER`, the rating first, since a result is read by
+    the person about to share it before anything parses it.
+    """
     session = doc.get("session") or {}
     shipped = {key: value for key, value in doc.items() if key != RECORD_KEY}
     shipped["session"] = _shipped_session(session)
-    return scrub.document(shipped, session.get("cwd"))
+    # Pending since before usage was summarized, with no record to read again.
+    if isinstance(shipped.get("usage"), list):
+        shipped["usage"] = usage.summarize(shipped["usage"])
+    # A sum of float costs drifts into noise like 45.09669719999999.
+    if isinstance(shipped.get("cost_usd"), float):
+        shipped["cost_usd"] = round(shipped["cost_usd"], 4)
+    ordered = {key: shipped[key] for key in document.ORDER if key in shipped}
+    ordered |= {key: value for key, value in shipped.items() if key not in ordered}
+    return scrub.document(ordered, session.get("cwd"))
 
 
 def _shipped_session(session):
@@ -175,7 +187,7 @@ def _fill(doc, agent):
     record = _record_path(doc, agent)
     rows, cost = read_usage(record)
     if rows:
-        doc["usage"] = rows
+        doc["usage"] = usage.summarize(rows)
     if cost is not None:
         doc["cost_usd"] = cost
     ran, invoked = read_tools(record)

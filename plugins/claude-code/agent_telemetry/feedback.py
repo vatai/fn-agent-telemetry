@@ -1,8 +1,9 @@
 """User feedback recorded alongside a session's telemetry.
 
-Usage data says what a session did; it cannot say whether it was any good. This
-module records the missing half: what the user was judging (`subject`), the
-figure of merit they judged it on (`fom`), the number they observed (`value`),
+Usage data says what a session consumed; it cannot say what the work was or
+whether it was any good. This module records the missing half: what the user was
+judging (`subject`), a summary of the kind of work done (`summary`), the figure
+of merit they judged it on (`fom`), the number they observed (`value`),
 and one normalised score for the session overall (`satisfaction`). The answer is
 written into the session's own document, so it needs no join to anything.
 
@@ -18,6 +19,11 @@ was measured in. So the domain metric stays honest and the cross-session axis
 stays fixed. That is also where direction lives -- `loss` falls where `accuracy`
 rises, and no lookup can tell which a free-form figure is -- so it is asked for
 rather than inferred.
+
+`summary` is the one field written from the conversation. The agent drafts it --
+50 to 100 words on the type of work, no code, paths, names or secrets -- and the
+user accepts or rewrites it before it is stored, so what is shared about the
+work is what they read and approved.
 
 Unlike the hooks, this runs from a slash command the user typed, so a failure
 here is worth printing rather than swallowing. The answer is stored before the
@@ -87,6 +93,7 @@ def _record(session_id, args):
         return False
     doc["feedback"] = {
         "subject": args.subject,
+        "summary": args.summary,
         "fom": _fom_key(args.fom),
         "scale": fom_scale(args.unit),
         "value": _plain(args.value),
@@ -122,6 +129,9 @@ def _parse_args(argv):
     # command: it selects which agent's sessions this one is looked up among.
     parser.add_argument("--agent", required=True, choices=adapters.known_agents())
     parser.add_argument("--subject", required=True, help="what was being judged")
+    parser.add_argument(
+        "--summary", required=True, help="the type of work done, as the user approved it"
+    )
     parser.add_argument("--fom", required=True, help=_fom_help())
     parser.add_argument("--unit", default=None, help="the figure of merit's unit, if it has one")
     parser.add_argument("--value", required=True, type=float, help="the number observed, in --unit")
@@ -149,6 +159,8 @@ def _check_values(parser, args):
     range -- so `--satisfaction` is the one that is genuinely validated, and it
     has to be, being the only field comparable across sessions.
     """
+    if not args.summary.strip():
+        parser.error("--summary must not be empty")
     scale = fom_scale(args.unit)
     if not _within(args.value, scale):
         parser.error(f"--value must be {describe_scale(scale)}")

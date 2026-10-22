@@ -2,10 +2,11 @@
 
 Append-only telemetry capture for local Claude Code, codex and opencode CLI
 sessions. One JSON document per rated session, holding six things: the skills
-that were available and their defining text, per-message token usage, the
-session cost, the `AGENTS.md`/`CLAUDE.md` in effect, which tools ran and how
-often, and the user's rating. Nothing else — no conversation, no tool inputs or
-results, no hook payloads, no transcript.
+that were available and their defining text, token usage totalled per model,
+the session cost, the `AGENTS.md`/`CLAUDE.md` in effect, which tools ran and how
+often, and the user's rating with a summary of the work they approved. Nothing
+else — no conversation, no tool inputs or results, no hook payloads, no
+transcript.
 
 ## Canonical docs — read before changing anything
 
@@ -63,11 +64,19 @@ machines; their skill and context columns come out blank.
   one is domain-specific; `SUGGESTED_FOMS` in `agent_telemetry/feedback.py` only
   seeds the prompt. Comparability across sessions and users rests entirely on
   that third answer, so its scale is the thing that must not move.
+- After Q3 the agent shows a 50–100 word summary of the type of work, drafted
+  from the session, and stores it only as the user approves or rewrites it. It
+  is the one field written from the conversation, which is why it is confirmed
+  rather than taken — keep it about the work: no code, paths, names, secrets.
+- A result is written rating first, in `document.ORDER`, since the person about
+  to share it reads it before anything parses it.
 - Usage, cost, skills, tools, context and rating are all in one document, so
   nothing ever needs a join.
 - Tokens and cost reach no hook payload under Claude Code, so its own record is
   *read* for them and never kept. Sum one usage per `message.id`, and take the
-  largest `cost-state`, not the last.
+  largest `cost-state`, not the last. Those rows never reach a document:
+  `usage.summarize` folds them into a message count, the peak context and one
+  total per model.
 - Codex's record is read the same way, but its counts are cumulative, so a usage
   row is what they grew by — and its `input_tokens` includes the cached tokens,
   which Claude Code's does not. Codex reports **no cost at all**; `null` there is

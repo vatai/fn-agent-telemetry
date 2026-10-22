@@ -11,6 +11,10 @@ and writes the same file. The command invocation asks you 3 questions:
 - **Q2**: FOM as a numerical value;
 - **Q3**: Overall satisfaction with the agent/LLM (1-5 scores);
 
+and then shows you a 50-100 word summary of the kind of work the session did,
+which you accept, ask to be made more general, or rewrite. Only what you approve
+is stored.
+
 Then it generates one JSON file in `$HOME/agent-telemetry` which should be
 uploaded to the URL which is provided separately. It is plain text — read it
 before you send it; see [what the file holds](#what-the-file-holds).
@@ -115,14 +119,16 @@ to enter the FOM as a numerical value.
 It holds six things and nothing else:
 
 - the **skills** that were available to the session, and the text defining them;
-- the **tokens** used, per reply;
+- the **tokens** used, totalled per model, with the number of replies and the
+  largest context any reply had;
 - what the session **cost**, where the agent says — codex never does;
 - the **`AGENTS.md` and `CLAUDE.md`** files the agent was working under, in full;
 - which **tools** ran and how many times each — the tool's name and a count,
   and under Claude Code, for a skill, the skill's name, so a session records
   which skills it used and not only which it had;
-- your **three answers** to Q1-Q3.
+- your **three answers** to Q1-Q3 and the **summary** you approved — these come
+  first in the file.
 
-It does not contain your prompts, the agent's replies, what any tool was given
+Apart from that summary, it does not contain your prompts, the agent's replies, what any tool was given
 or returned, or any copy of the conversation. Of tool activity it keeps names
 and counts only: no command, no file, no argument, no result.

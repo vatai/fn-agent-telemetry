@@ -9,14 +9,24 @@ run this once before you leave it:
 /fn-eval          # $fn-eval under codex, where it is a skill and not a command
 ```
 
-The agent proposes what the session should be judged on, then asks three
-questions, one at a time, and writes the document.
+The agent proposes what the session should be judged on and drafts a summary of
+the work, then asks three questions, one at a time, has you confirm the summary,
+and writes the document.
 
 | Question | Asks for                                    | You answer             |
 | -------- | ------------------------------------------- | ---------------------- |
 | Q1       | the figure of merit — what was measured     | a name, or your own    |
 | Q2       | its value                                   | a number, in Q1's unit |
 | Q3       | the session overall, that figure normalised | 1–5                    |
+| then     | the summary it drafted, for approval        | accept, or rewrite it  |
+
+The summary is 50–100 words on the type of work — the kind of task, the domain,
+what was built or fixed and how it went — with no code, paths, names or secrets.
+It is the one field written from the conversation rather than from a record or
+an answer, so it is shown in full and stored only as approved: Claude Code
+offers `Store as written` and `Make it more general`, and anything typed instead
+replaces the draft verbatim. It is not a fourth question about the session, and
+nothing about Q1–Q3 changed to make room for it.
 
 Q1 is free text. A useful figure of merit is domain-specific — GFLOP/s for a
 kernel, samples/s for a training loop, × for an optimisation — so the eight the
@@ -81,14 +91,15 @@ Six things, and nothing else:
 | | |
 | - | - |
 | **skills** | every skill the session had available, the text defining it, and how often it was used |
-| **usage** | tokens per assistant message |
+| **usage** | tokens totalled per model, the number of messages, and the peak context |
 | **cost** | what the session cost, where the agent says — codex never does |
 | **context** | the `AGENTS.md` and `CLAUDE.md` files in effect, whole |
 | **tools** | which tools ran, and how many times each, and — under Claude Code alone — how often each skill was invoked |
-| **rating** | your three answers |
+| **rating** | your three answers, and the summary of the work you approved |
 
 No prompts, no assistant output, no tool inputs or results, no native hook
-payloads, and no copy of the conversation. Tool activity is names and counts:
+payloads, and no copy of the conversation — the approved summary being the one
+thing written from it. Tool activity is names and counts:
 what a tool was given and what it returned are not read at all, save the one
 field named under [tools](#tools) below. A hook's payload is read for the
 session id, the working directory and where the agent keeps its own record, and
@@ -183,7 +194,10 @@ apart.
 
 ```json
 {
-  "schema_version": 4,
+  "feedback": { "subject": "…", "summary": "Optimised a sparse matrix kernel…",
+                "fom": "hours_saved", "scale": {}, "value": 6,
+                "satisfaction": 5, "satisfaction_scale": {}, "comment": null,
+                "recorded": "2026-09-07T09:30:11.250566+00:00" },
   "session": {
     "session_id": "610153d8-…",
     "agent": "claude-code",
@@ -193,25 +207,26 @@ apart.
     "host": { "os": "Linux 7.1.9-arch1-2 #1 SMP … x86_64", "user": "vatai",
               "email": "emil.vatai@riken.jp" }
   },
+  "cost_usd": 4.13,
+  "usage": { "messages": 318, "peak_context": 151204,
+             "by_model": { "claude-opus-5": { "messages": 318, "input": 636,
+                           "output": 93112, "reasoning": 28610,
+                           "cache_read": 13266011, "cache_write": 903140 } } },
+  "tools": [{ "name": "Bash", "calls": 198 }, { "name": "Edit", "calls": 32 }],
   "skills": [{ "name": "code-review", "source": "listing", "text": "Review the current diff…",
                "uses": 0 }],
-  "tools": [{ "name": "Bash", "calls": 198 }, { "name": "Edit", "calls": 32 }],
-  "usage": [{ "message_id": "msg_01…", "model": "claude-opus-5", "input": 2,
-              "output": 452, "reasoning": 276, "cache_read": 129339, "cache_write": 974 }],
-  "cost_usd": 4.13,
   "context": [{ "path": "$PROJECTS/clanker-telemetry/AGENTS.md",
                 "names": ["…/AGENTS.md", "…/CLAUDE.md"], "text": "# fn-agent-telemetry…" }],
-  "feedback": { "subject": "…", "fom": "hours_saved", "scale": {}, "value": 6,
-                "satisfaction": 5, "satisfaction_scale": {}, "comment": null,
-                "recorded": "2026-09-07T09:30:11.250566+00:00" }
+  "schema_version": 5
 }
 ```
 
 `cost_usd` is absent or `null` when it could not be determined, which is not a
-zero — and always `null` under codex, which reports no cost anywhere. A codex
-document also differs in two smaller ways within the same schema: a usage row's
-`message_id` is `null`, codex attributing usage to a request rather than a
-message, and a skill carries no `uses` key at all, since nothing counts skill
+zero — and always `null` under codex, which reports no cost anywhere. Keys are
+written in that order, rating first (`document.ORDER`). A codex document also
+differs in two smaller ways within the same schema: its `messages` count model
+requests, codex attributing usage to a request rather than a message, and a
+skill carries no `uses` key at all, since nothing counts skill
 invocations there. `feedback` is `null` in a pending document and always present in a result,
 rating being what produces one. A pending document also carries `_record_path`,
 which is bookkeeping — where the agent keeps its own record — and is dropped
@@ -310,6 +325,14 @@ cached kinds are taken out of `input`: a reader adds `input`, `cache_read` and
 `cache_write` and gets the total codex reports. Cost is the part codex simply
 does not have — its `rate_limits` say what a plan has left, not what a session
 spent — so a codex `cost_usd` is always `null`.
+
+**What is stored is a summary of those rows, not the rows.** Each agent's rows
+are read and deduplicated as above, then `usage.summarize` folds them into the
+message count, one total per model, and the peak context: the largest `input +
+cache_read + cache_write` of any one message, which is how full the window got
+and which no sum can recover. A row per message was most of a result and read by
+nothing — `analysis/` only ever summed them — so schema 5 dropped it. A schema-4
+document left pending with rows in it is summarized as it is written out.
 
 ## How the plugins differ
 

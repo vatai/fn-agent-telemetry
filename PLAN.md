@@ -9,15 +9,17 @@ with, what it consumed, and how the user rated it.
 - Observe local CLI sessions of all three agents, interactive and non-interactive.
 - Install integrations in per-user agent configuration.
 - Collect only six things: the skills available to the session and their defining text;
-  per-message token usage; the session cost, from the agents that report one; the
+  token usage, totalled per model for the session; the session cost, from the agents that report one; the
   contents of the `AGENTS.md` and `CLAUDE.md` instruction files in effect; which tools
   ran and how many times each; and the user's rating.
 - Collect no conversation — no prompts, assistant output, tool inputs or outputs, or
   native hook payloads — and keep no copy of the session transcript. Tool activity is
   names and counts, plus the skill named by a `Skill` call where the agent names one,
-  and nothing else.
+  and nothing else. The one exception is a 50-100 word summary of the type of work done,
+  drafted by the agent and stored only as the user approved or rewrote it.
 - Record the user's own rating: a figure of merit of their choosing, and one fixed 1-5
-  normalisation of it that compares across sessions and users.
+  normalisation of it that compares across sessions and users. Write it first in the
+  result, where the person sharing it reads it before anything else.
 - Retain results indefinitely under `AGENT_TELEMETRY_DIR`, as one JSON file per *rated*
   session. Not an archive, and not a directory.
 - Telemetry failures must never interrupt an agent session.
@@ -160,3 +162,21 @@ to quote an aggregate from.
 3. **Tests** for skill discovery and the listing fold, usage extraction against a
    known record, context collection through a symlink, non-blocking failures, and
    idempotent installation.
+
+**A result reads as a summary of the work, not a log.** Schema is 5. `usage` is
+no longer a row per message -- 318 of them on the session measured above, most of
+the file and read by nothing, `analysis/` having only ever summed them. It is now
+the message count, the peak context (the largest `input + cache_read +
+cache_write` of any message, which a sum cannot recover) and one total per model,
+so a session's Opus and Haiku shares stay apart. The rows are still read and
+deduplicated exactly as before, then folded by `usage.summarize` before anything
+is stored. Keys are written rating first (`document.ORDER`), and `feedback` gains
+`summary`: 50-100 words on the type of work, drafted by the agent and shown back
+for approval as a confirmation after Q3 -- not a fourth question, Q3's scale
+being untouched. `--summary` is required and must not be empty. Cost is rounded
+to four places as it is written out. `analysis/` reads both usage shapes into
+the same columns, adds `summary` and `peak_context`, and leaves the latter blank
+for anything older. Verified against a real 25 MB record (242 messages, one
+model, `$45.10`), a schema-4 pending document with list usage and the old key
+order shipped as 5, and the opencode SDK path; the three results already on this
+machine still read. The plugins are 0.5.0.

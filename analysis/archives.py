@@ -1,7 +1,7 @@
 """Read collected telemetry back into one row per session.
 
 Two formats sit side by side, and which one a file is decides how it is read.
-A `.json` document is the current form: skills, per-message usage, cost, the
+A `.json` document is the current form: skills, usage, cost, the
 `AGENTS.md`/`CLAUDE.md` in effect, which tools ran and how often, and the
 rating, with no conversation in it -- tool activity is names and counts, never
 an input or a result.
@@ -23,7 +23,8 @@ v1 archive is read with them: Claude Code repeats a message's whole `usage` on
 every content-block record, so usage is summed one per `message.id`; and cost
 comes from the largest `cost-state`, never the last, with absence meaning
 unknown rather than zero. The current plugin applies both before writing a
-document, so a `.json` row simply sums what it is given.
+document, so a `.json` row simply sums what it is given. Since schema 5 that is
+one total per model rather than a row per message, and the two read alike.
 
 A stored `scale` is the authority for reading its own `value`. `fom` is free
 text in whatever unit that session used, so it does not compare across sessions;
@@ -47,7 +48,7 @@ BILLED_FIELDS = ("input", "output", "cache_read", "cache_write")
 # written before schema 3, or an archive. "Ran no tools" is a different claim.
 TOOL_FIELDS = ("tools", "tool_calls", "tool_names", "skill_calls", "skills_used")
 FEEDBACK_FIELDS = (
-    "subject", "fom", "value", "unit", "better", "scale",
+    "subject", "summary", "fom", "value", "unit", "better", "scale",
     "satisfaction", "comment", "legacy_scale",
 )
 
@@ -110,9 +111,28 @@ def _read_document(path):
         "context_chars": sum(len(c.get("text") or "") for c in doc.get("context") or []),
     }
     row.update(_tool_activity(doc))
-    row.update(_totals(doc.get("usage") or [], doc.get("cost_usd")))
+    row.update(_document_usage(doc.get("usage"), doc.get("cost_usd")))
     row.update(_feedback(doc.get("feedback")))
     return row
+
+
+def _document_usage(usage, cost):
+    """Totals from either shape: per model since schema 5, per message before.
+
+    A per-model total is summed like a row, carrying its own message count, so
+    both shapes come out as the same columns. `peak_context` exists only in the
+    newer one and is blank for the older.
+    """
+    if not isinstance(usage, dict):
+        return _totals(usage or [], cost) | {"peak_context": None}
+    rows = [
+        totals | {"model": model}
+        for model, totals in (usage.get("by_model") or {}).items()
+    ]
+    return _totals(rows, cost) | {
+        "messages": usage.get("messages") or 0,
+        "peak_context": usage.get("peak_context"),
+    }
 
 
 def _tool_activity(doc):
@@ -182,7 +202,7 @@ def _read_archive(path):
     }
     row.update(dict.fromkeys(TOOL_FIELDS))
     rows, cost = _v1_usage(first.get("agent"), transcript)
-    row.update(_totals(rows, cost))
+    row.update(_totals(rows, cost) | {"peak_context": None})
     row.update(_feedback(_v1_feedback(events)))
     return row
 
@@ -281,7 +301,7 @@ def _feedback(answer):
     scale = answer.get("scale") or {}
     fields = {
         name: answer.get(name)
-        for name in ("subject", "fom", "value", "satisfaction", "comment")
+        for name in ("subject", "summary", "fom", "value", "satisfaction", "comment")
     }
     return fields | {
         "unit": scale.get("unit"),

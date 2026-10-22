@@ -3,13 +3,19 @@ name: fn-eval
 description: Rate this session on a figure of merit and store it with the telemetry. Only when the user explicitly asks for it by name; never on your own initiative.
 ---
 
-Rate the current session. Exactly three questions, asked in prose, one at a
-time. Wait for each answer before wording the next.
+Rate the current session. Exactly three questions and one confirmation, asked
+in prose, one at a time. Wait for each answer before wording the next.
 
 **1. Work out the subject yourself — do not ask.** In a few words, name what this
 session should be judged on: the task the user set, not the tools you used. If
 the user said what they were judging when they invoked this, use their words
 verbatim instead.
+
+Then draft the **summary**: 50 to 100 words on the type of work this session
+did — the kind of task, the domain, what was built, fixed, analysed or written,
+and how it went. Describe the work, not the conversation: no code, file paths,
+names of people or hosts, credentials, or anything the user marked private.
+Keep it to yourself for now; it is shown for approval after Q3.
 
 **2. Q1 — the figure of merit.** Ask which figure of merit to judge the session
 on, and nothing else. Say in a sentence or two what one is — the performance
@@ -42,14 +48,20 @@ is a 3, and a slowdown is a 1. It is what makes sessions measured in different
 units comparable, which is why it is asked rather than worked out from the
 number. Stop and wait.
 
-**5. Record it**, once all three answers are in hand and not before — the
-command requires every one of them. The executable sits in the checkout this
-skill is part of, two directories above this file, so resolve it through this
-file's real path rather than typing a path of your own:
+**5. Confirm the summary.** Show the summary from step 1 in full, say it will be
+stored in the file they share, and ask whether to store it as written or what to
+write instead. Stop and wait. Whatever they write replaces your draft verbatim.
+This is not a fourth question about the session; it is the user approving the
+one field you wrote.
+
+**6. Record it**, once all three answers and the approved summary are in hand
+and not before — the command requires every one of them. The executable sits in
+the checkout this skill is part of, two directories above this file, so resolve
+it through this file's real path rather than typing a path of your own:
 
 ```sh
 skill=$(readlink -f "<the absolute path of this SKILL.md>")
-"$(dirname "$skill")/../../bin/agent-telemetry-feedback" --subject "<from step 1>" --fom <Q1> --unit "<Q1's unit, if any>" --value <Q2> --satisfaction <Q3>
+"$(dirname "$skill")/../../bin/agent-telemetry-feedback" --subject "<from step 1>" --summary "<as approved in step 5>" --fom <Q1> --unit "<Q1's unit, if any>" --value <Q2> --satisfaction <Q3>
 ```
 
 Omit `--unit` for a figure with no unit. If the user volunteered anything the
@@ -59,7 +71,7 @@ If the command exits non-zero it rejected an answer: `--value` must be a number
 of 0 or more, and `--satisfaction` a whole number from 1 to 5. Re-ask the
 question it rejected and run it again. Do not report the error as the result.
 
-**6.** Report the line it prints, then tell the user this, in your own words:
+**7.** Report the line it prints, then tell the user this, in your own words:
 the JSON file is written now and rewritten at the end of every later turn, so
 nothing is lost by carrying on; and it will carry no cost, because codex reports
 none — the token counts are all there is. Do not use any other tools and do not

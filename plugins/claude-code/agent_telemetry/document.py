@@ -16,11 +16,15 @@ import tempfile
 
 from . import SCHEMA_VERSION, paths
 
+# The order a result's keys are written in: what the user said first, then what
+# the session was and what it consumed, and the bulky texts last.
+ORDER = ("feedback", "session", "cost_usd", "usage", "tools", "skills", "context", "schema_version")
+
 
 def blank(session_id, agent):
     """A document with the session block filled in and nothing collected yet."""
     return {
-        "schema_version": SCHEMA_VERSION,
+        "feedback": None,
         "session": {
             "session_id": session_id,
             "agent": agent,
@@ -29,12 +33,12 @@ def blank(session_id, agent):
             "ended": None,
             "host": _host(),
         },
-        "skills": [],
-        "tools": [],
-        "usage": [],
         "cost_usd": None,
+        "usage": None,
+        "tools": [],
+        "skills": [],
         "context": [],
-        "feedback": None,
+        "schema_version": SCHEMA_VERSION,
     }
 
 
